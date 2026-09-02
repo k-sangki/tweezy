@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Stock } from '@tweezy/core';
 
 export interface StockListItemProps {
@@ -6,9 +6,12 @@ export interface StockListItemProps {
   onPress?: (stock: Stock) => void;
 }
 
-export function StockListItem({ stock }: StockListItemProps) {
+export function StockListItem({ stock, onPress }: StockListItemProps) {
   return (
-    <View style={styles.container}>
+    <Pressable
+      style={({ pressed }) => [styles.container, pressed && styles.containerPressed]}
+      onPress={onPress ? () => onPress(stock) : undefined}
+    >
       <View>
         <Text style={styles.name}>{stock.name}</Text>
         <Text style={styles.ticker}>
@@ -16,7 +19,7 @@ export function StockListItem({ stock }: StockListItemProps) {
         </Text>
       </View>
       <Text style={styles.price}>{stock.price.toLocaleString('ko-KR')}원</Text>
-    </View>
+    </Pressable>
   );
 }
 
@@ -27,6 +30,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     paddingHorizontal: 16,
+  },
+  containerPressed: {
+    backgroundColor: '#f2f2f2',
   },
   name: {
     fontSize: 16,

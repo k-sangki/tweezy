@@ -19,8 +19,13 @@ Investment & Securities' Open API) instead of scraping KRX from the device.
 
 OpenDART's actual public REST API (`opendart.fss.or.kr/api`) is used both
 here (for the ticker → `corp_code` mapping) and directly from `core`'s
-`DartClient` for live disclosure search - that one *is* safe to call
-straight from the app.
+`DartClient` for live disclosure search - that endpoint itself is fine to
+call from the app. The API key is a different story: `app-mobile` currently
+reads it from `EXPO_PUBLIC_DART_API_KEY`, which Expo inlines into the
+client bundle - anyone who decompiles the shipped app can read it. That's
+an acceptable trade-off for local development (worst case is your free-tier
+key's rate limit getting used up), but before shipping, move disclosure
+search behind a small server-side proxy that holds `DART_API_KEY` instead.
 
 In this repo, `.github/workflows/update-market-feed.yml` runs this on a
 schedule (weekdays after KRX close) and commits `data/kr-quotes.json` back
