@@ -10,6 +10,7 @@ import type {
   ShortInterestDropFilter,
 } from '@tweezy/core';
 import { FilterGroup } from '../components/FilterGroup';
+import { RadioGroup } from '../components/RadioGroup';
 import { Select } from '../components/Select';
 import { colors, radius, spacing } from '../lib/theme';
 import { useScreener } from '../lib/ScreenerContext';
@@ -23,8 +24,8 @@ const TURNAROUND_OPTIONS: { label: string; value: ProfitTurnaroundMode | undefin
 ];
 
 const PERIOD_OPTIONS: { label: string; value: GrowthPeriodType }[] = [
-  { label: '분기 기준', value: 'quarterly' },
-  { label: '연간 기준', value: 'annual' },
+  { label: '분기', value: 'quarterly' },
+  { label: '연간', value: 'annual' },
 ];
 
 const CONSECUTIVE_OPTIONS: { label: string; value: 0 | 1 | 2 | 3 | 4 }[] = [
@@ -179,11 +180,11 @@ export default function FiltersScreen() {
           <Select label="최근 분기 흑자전환" options={TURNAROUND_OPTIONS} value={profitTurnaround} onChange={setProfitTurnaround} />
           <View style={styles.divider} />
           <Text style={styles.subLabel}>순이익 지속상승</Text>
-          <Select label="기준" options={PERIOD_OPTIONS} value={netIncomePeriod} onChange={setNetIncomePeriod} />
+          <RadioGroup options={PERIOD_OPTIONS} value={netIncomePeriod} onChange={setNetIncomePeriod} />
           <Select label="조건" options={CONSECUTIVE_OPTIONS} value={netIncomeConsecutive} onChange={setNetIncomeConsecutive} />
           <View style={styles.divider} />
           <Text style={styles.subLabel}>매출 지속상승</Text>
-          <Select label="기준" options={PERIOD_OPTIONS} value={revenuePeriod} onChange={setRevenuePeriod} />
+          <RadioGroup options={PERIOD_OPTIONS} value={revenuePeriod} onChange={setRevenuePeriod} />
           <Select label="조건" options={CONSECUTIVE_OPTIONS} value={revenueConsecutive} onChange={setRevenueConsecutive} />
         </FilterGroup>
 
