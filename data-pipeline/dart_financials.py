@@ -35,7 +35,9 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -111,6 +113,14 @@ def latest_quarter(now: datetime) -> tuple[int, int]:
     return now.year - 1, 4
 
 
+class DailyLimitReached(RuntimeError):
+    """OpenDART's per-key daily request quota is exhausted (status 020).
+
+    Not fatal: collection stops, whatever was gathered is kept and cached,
+    and the next run resumes from the cache to fetch only what's missing.
+    """
+
+
 def _prior_quarter(year: int, quarter: int) -> tuple[int, int]:
     return (year - 1, 4) if quarter == 1 else (year, quarter - 1)
 
@@ -151,7 +161,7 @@ class DartFinancialsClient:
                     if status == "013":
                         break
                     if status == "020":
-                        raise RuntimeError("OpenDART 일일 요청 한도를 초과했습니다.")
+                        raise DailyLimitReached("OpenDART 일일 요청 한도를 초과했습니다.")
                     raise RuntimeError(f"OpenDART 오류 {status}: {payload.get('message', '')}")
                 except (requests.RequestException, ValueError):
                     if attempt:
@@ -220,7 +230,18 @@ class DartFinancialsClient:
         return result
 
 
-def load_cache(path: Path, now: datetime, max_age_days: int = 7) -> dict[str, dict[str, list[float | None]]] | None:
+def _period_key(now: datetime) -> str:
+    """Cache stays valid until a new reporting period opens, not on a rolling age.
+
+    Filings only change quarterly, and a full collection can take more than one
+    day because of the daily request quota - an age-based TTL would throw away a
+    nearly-complete cache and restart the same treadmill.
+    """
+    year, quarter = latest_quarter(now)
+    return f"{year}Q{quarter}"
+
+
+def load_cache(path: Path, now: datetime, max_age_days: int = 120) -> dict[str, dict[str, list[float | None]]] | None:
     if not path.exists():
         return None
     try:
@@ -228,7 +249,8 @@ def load_cache(path: Path, now: datetime, max_age_days: int = 7) -> dict[str, di
         fetched_at = datetime.fromisoformat(payload["fetchedAt"])
         if fetched_at.tzinfo is None and now.tzinfo is not None:
             fetched_at = fetched_at.replace(tzinfo=now.tzinfo)
-        if payload.get("schemaVersion") != CACHE_SCHEMA_VERSION or now - fetched_at > timedelta(days=max_age_days):
+        stale = payload.get("period") != _period_key(now) or now - fetched_at > timedelta(days=max_age_days)
+        if payload.get("schemaVersion") != CACHE_SCHEMA_VERSION or stale:
             return None
         financials = payload.get("financials")
         return financials if isinstance(financials, dict) else None
@@ -238,7 +260,12 @@ def load_cache(path: Path, now: datetime, max_age_days: int = 7) -> dict[str, di
 
 def save_cache(path: Path, now: datetime, financials: dict[str, dict[str, list[float | None]]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"schemaVersion": CACHE_SCHEMA_VERSION, "fetchedAt": now.isoformat(), "financials": financials}
+    payload = {
+        "schemaVersion": CACHE_SCHEMA_VERSION,
+        "period": _period_key(now),
+        "fetchedAt": now.isoformat(),
+        "financials": financials,
+    }
     path.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
 
@@ -247,16 +274,28 @@ def collect_financials(
     corp_codes: list[str],
     now: datetime,
     workers: int = 4,
-) -> dict[str, dict[str, list[float | None]]]:
+    on_progress: Callable[[dict[str, dict[str, list[float | None]]]], None] | None = None,
+    progress_every: int = 200,
+) -> tuple[dict[str, dict[str, list[float | None]]], bool]:
+    """Returns (collected, daily_limit_reached).
+
+    Hitting OpenDART's daily quota stops collection but is not an error: the
+    partial result is returned (and checkpointed via `on_progress`) so the feed
+    still publishes and the next run resumes with only the missing companies.
+    """
     client = DartFinancialsClient(api_key)
     results: dict[str, dict[str, list[float | None]]] = {}
+    limit_reached = threading.Event()
 
     def collect_one(corp_code: str) -> tuple[str, dict[str, list[float | None]] | None]:
+        if limit_reached.is_set():
+            return corp_code, None
         try:
             return corp_code, client.collect_one(corp_code, now)
+        except DailyLimitReached:
+            limit_reached.set()
+            return corp_code, None
         except RuntimeError as error:
-            if "한도" in str(error):
-                raise
             LOGGER.warning("%s 재무 수집 실패: %s", corp_code, error)
             return corp_code, None
 
@@ -266,7 +305,12 @@ def collect_financials(
             corp_code, financials = future.result()
             if financials:
                 results[corp_code] = financials
+            if on_progress and index % progress_every == 0:
+                on_progress(results)
             if index % 100 == 0:
                 LOGGER.info("DART 재무 %s/%s 완료", index, len(futures))
 
-    return results
+    if limit_reached.is_set():
+        LOGGER.warning("OpenDART 일일 한도 도달 - %s개 기업까지 수집하고 중단합니다.", len(results))
+
+    return results, limit_reached.is_set()

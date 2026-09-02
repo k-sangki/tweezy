@@ -164,8 +164,22 @@ def main() -> None:
             ]
             if corp_codes_needing_financials:
                 LOGGER.info("OpenDART 재무제표(순이익/매출) 수집 시작: %s개 기업", len(corp_codes_needing_financials))
-                financials.update(dart_financials.collect_financials(dart_api_key, corp_codes_needing_financials, now))
+                cached_before = dict(financials)
+
+                def checkpoint(partial: dict[str, dict[str, list[float | None]]]) -> None:
+                    dart_financials.save_cache(financials_cache_path, now, {**cached_before, **partial})
+
+                collected, limit_reached = dart_financials.collect_financials(
+                    dart_api_key, corp_codes_needing_financials, now, on_progress=checkpoint
+                )
+                financials.update(collected)
                 dart_financials.save_cache(financials_cache_path, now, financials)
+                if limit_reached:
+                    LOGGER.warning(
+                        "OpenDART 일일 한도로 %s개 기업만 수집됨 (전체 %s개). 남은 기업은 다음 실행 때 이어서 수집합니다.",
+                        len(financials),
+                        len(corp_codes),
+                    )
             else:
                 LOGGER.info("OpenDART 재무제표 캐시 재사용 (%s개 기업)", len(financials))
     else:

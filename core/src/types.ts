@@ -53,6 +53,10 @@ export interface ShortInterestDropFilter {
   minDropPct: 5 | 10 | 15 | 20;
 }
 
+export type InvestorPreset = 'buffett' | 'lynch' | 'oneil' | 'graham' | 'minervini' | 'greenblatt';
+
+export type TechnicalPattern = 'breakoutImminent' | 'breakoutDone' | 'volumeDryUp' | 'boxRange';
+
 export interface ScreenerFilter {
   markets?: Market[];
   minMarketCap?: number;
