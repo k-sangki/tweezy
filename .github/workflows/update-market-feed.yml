@@ -46,4 +46,14 @@ jobs:
           git add data/kr-quotes.json
           git diff --cached --quiet && exit 0
           git commit -m "chore: update market feed"
-          git push
+          # Collection takes several minutes, so main may have moved on since
+          # checkout. Rebase before pushing (this job only ever touches
+          # data/kr-quotes.json, so there's nothing to conflict with) and retry
+          # in case another push lands in the gap - otherwise a whole run's
+          # worth of collected data is thrown away by a rejected push.
+          for attempt in 1 2 3; do
+            git pull --rebase origin main && git push && exit 0
+            echo "push attempt $attempt failed, retrying..."
+            sleep 5
+          done
+          exit 1
