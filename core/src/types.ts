@@ -72,4 +72,6 @@ export interface ScreenerFilter {
   foreignNetBuyDays?: number;
   pensionNetBuyDays?: number;
   shortInterestDrop?: ShortInterestDropFilter;
+  /** Legendary-investor presets. Multiple stack (a stock must satisfy every selected preset). */
+  presets?: InvestorPreset[];
 }

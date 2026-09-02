@@ -1,15 +1,20 @@
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import type {
-  ConsecutiveCount,
-  GrowthPeriodType,
-  Market,
-  ProfitTurnaroundMode,
-  ScreenerFilter,
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  INVESTOR_PRESETS,
+  PRESET_INFO,
+  type ConsecutiveCount,
+  type GrowthPeriodType,
+  type InvestorPreset,
+  type Market,
+  type ProfitTurnaroundMode,
+  type ScreenerFilter,
 } from '@tweezy/core';
-import { colors, spacing } from '../lib/theme';
+import { colors, radius, spacing } from '../lib/theme';
 import { useScreener } from '../lib/ScreenerContext';
+import { Checkbox } from './Checkbox';
 import { FilterGroup } from './FilterGroup';
+import { FilterRow } from './FilterRow';
 import { RadioGroup } from './RadioGroup';
 import { Select } from './Select';
 
@@ -30,7 +35,7 @@ const CONSECUTIVE_OPTIONS: { label: string; value: ConsecutiveCount }[] = [1, 2,
   value: n as ConsecutiveCount,
 }));
 
-const DIVIDEND_YIELD_OPTIONS = [1, 2, 3, 4, 5].map((n) => ({ label: `${n}%`, value: n }));
+const DIVIDEND_YIELD_OPTIONS = [0, 1, 2, 3, 4, 5].map((n) => ({ label: `${n}%`, value: n }));
 
 const NET_BUY_DAYS_OPTIONS = Array.from({ length: 10 }, (_, i) => i + 1).map((n) => ({
   label: String(n),
@@ -47,75 +52,118 @@ const SHORT_DROP_PCT_OPTIONS: { label: string; value: 5 | 10 | 15 | 20 }[] = [5,
   value: n as 5 | 10 | 15 | 20,
 }));
 
+const TECHNICAL_PATTERNS = [
+  { key: 'breakoutImminent', label: '전고점 돌파 임박' },
+  { key: 'breakoutDone', label: '전고점 돌파 완료' },
+  { key: 'volumeDryUp', label: '거래량 마름' },
+  { key: 'boxRange', label: '박스권 갇힘' },
+];
+
+interface FiltersState {
+  markets: Market[];
+  dividend: { on: boolean; value: number };
+  turnaround: { on: boolean; value: ProfitTurnaroundMode };
+  netIncome: { on: boolean; period: GrowthPeriodType; consecutive: ConsecutiveCount };
+  revenue: { on: boolean; period: GrowthPeriodType; consecutive: ConsecutiveCount };
+  institutional: { on: boolean; days: number };
+  foreign: { on: boolean; days: number };
+  pension: { on: boolean; days: number };
+  shortInterest: { on: boolean; daysAgo: 1 | 2 | 3 | 4 | 5; minDropPct: 5 | 10 | 15 | 20 };
+  presets: InvestorPreset[];
+}
+
+const INITIAL_STATE: FiltersState = {
+  markets: [],
+  dividend: { on: false, value: 1 },
+  turnaround: { on: false, value: 'yoy' },
+  netIncome: { on: false, period: 'quarterly', consecutive: 2 },
+  revenue: { on: false, period: 'quarterly', consecutive: 2 },
+  institutional: { on: false, days: 5 },
+  foreign: { on: false, days: 5 },
+  pension: { on: false, days: 5 },
+  shortInterest: { on: false, daysAgo: 5, minDropPct: 10 },
+  presets: [],
+};
+
+type RowKey = 'dividend' | 'turnaround' | 'netIncome' | 'revenue' | 'institutional' | 'foreign' | 'pension' | 'shortInterest';
+
+const GROUP_ROWS: Record<string, RowKey[]> = {
+  valuation: ['dividend'],
+  fundamental: ['turnaround', 'netIncome', 'revenue'],
+  flow: ['institutional', 'foreign', 'pension'],
+  short: ['shortInterest'],
+};
+
+const AVAILABLE_PRESETS = INVESTOR_PRESETS.filter((preset) => PRESET_INFO[preset].available);
+
 export function ScreenerFilters() {
   const { setFilter } = useScreener();
-
-  const [markets, setMarkets] = useState<Market[]>([]);
-
-  const [valuationEnabled, setValuationEnabled] = useState(false);
-  const [minDividendYield, setMinDividendYield] = useState(1);
-
-  const [fundamentalEnabled, setFundamentalEnabled] = useState(false);
-  const [profitTurnaround, setProfitTurnaround] = useState<ProfitTurnaroundMode>('yoy');
-  const [netIncomePeriod, setNetIncomePeriod] = useState<GrowthPeriodType>('quarterly');
-  const [netIncomeConsecutive, setNetIncomeConsecutive] = useState<ConsecutiveCount>(2);
-  const [revenuePeriod, setRevenuePeriod] = useState<GrowthPeriodType>('quarterly');
-  const [revenueConsecutive, setRevenueConsecutive] = useState<ConsecutiveCount>(2);
-
-  const [flowEnabled, setFlowEnabled] = useState(false);
-  const [institutionalDays, setInstitutionalDays] = useState(5);
-  const [foreignDays, setForeignDays] = useState(5);
-  const [pensionDays, setPensionDays] = useState(5);
-
-  const [shortEnabled, setShortEnabled] = useState(false);
-  const [shortDaysAgo, setShortDaysAgo] = useState<1 | 2 | 3 | 4 | 5>(5);
-  const [shortMinDropPct, setShortMinDropPct] = useState<5 | 10 | 15 | 20>(10);
+  const [state, setState] = useState<FiltersState>(INITIAL_STATE);
+  const [infoPreset, setInfoPreset] = useState<InvestorPreset | null>(null);
 
   useEffect(() => {
     const next: ScreenerFilter = {
-      markets: markets.length > 0 ? markets : undefined,
-      minDividendYield: valuationEnabled ? minDividendYield : undefined,
-      profitTurnaround: fundamentalEnabled ? profitTurnaround : undefined,
-      netIncomeStreak: fundamentalEnabled ? { period: netIncomePeriod, consecutive: netIncomeConsecutive } : undefined,
-      revenueStreak: fundamentalEnabled ? { period: revenuePeriod, consecutive: revenueConsecutive } : undefined,
-      institutionalNetBuyDays: flowEnabled ? institutionalDays : undefined,
-      foreignNetBuyDays: flowEnabled ? foreignDays : undefined,
-      pensionNetBuyDays: flowEnabled ? pensionDays : undefined,
-      shortInterestDrop: shortEnabled ? { daysAgo: shortDaysAgo, minDropPct: shortMinDropPct } : undefined,
+      markets: state.markets.length > 0 ? state.markets : undefined,
+      minDividendYield: state.dividend.on ? state.dividend.value : undefined,
+      profitTurnaround: state.turnaround.on ? state.turnaround.value : undefined,
+      netIncomeStreak: state.netIncome.on
+        ? { period: state.netIncome.period, consecutive: state.netIncome.consecutive }
+        : undefined,
+      revenueStreak: state.revenue.on
+        ? { period: state.revenue.period, consecutive: state.revenue.consecutive }
+        : undefined,
+      institutionalNetBuyDays: state.institutional.on ? state.institutional.days : undefined,
+      foreignNetBuyDays: state.foreign.on ? state.foreign.days : undefined,
+      pensionNetBuyDays: state.pension.on ? state.pension.days : undefined,
+      shortInterestDrop: state.shortInterest.on
+        ? { daysAgo: state.shortInterest.daysAgo, minDropPct: state.shortInterest.minDropPct }
+        : undefined,
+      presets: state.presets.length > 0 ? state.presets : undefined,
     };
     setFilter(next);
-  }, [
-    markets,
-    valuationEnabled,
-    minDividendYield,
-    fundamentalEnabled,
-    profitTurnaround,
-    netIncomePeriod,
-    netIncomeConsecutive,
-    revenuePeriod,
-    revenueConsecutive,
-    flowEnabled,
-    institutionalDays,
-    foreignDays,
-    pensionDays,
-    shortEnabled,
-    shortDaysAgo,
-    shortMinDropPct,
-    setFilter,
-  ]);
+  }, [state, setFilter]);
 
-  const toggleMarket = (market: Market) => {
-    setMarkets((current) =>
-      current.includes(market) ? current.filter((item) => item !== market) : [...current, market],
-    );
-  };
+  const patch = <K extends keyof FiltersState>(key: K, value: Partial<FiltersState[K]>) =>
+    setState((current) => ({ ...current, [key]: { ...(current[key] as object), ...value } }));
+
+  const setRow = (key: RowKey, on: boolean) =>
+    setState((current) => ({ ...current, [key]: { ...current[key], on } }) as FiltersState);
+
+  const groupChecked = (group: keyof typeof GROUP_ROWS) =>
+    GROUP_ROWS[group].every((row) => state[row].on);
+  const groupIndeterminate = (group: keyof typeof GROUP_ROWS) =>
+    !groupChecked(group) && GROUP_ROWS[group].some((row) => state[row].on);
+  const toggleGroup = (group: keyof typeof GROUP_ROWS, checked: boolean) =>
+    setState((current) => {
+      const updates: Record<string, unknown> = {};
+      for (const row of GROUP_ROWS[group]) {
+        updates[row] = { ...current[row], on: checked };
+      }
+      return { ...current, ...updates } as FiltersState;
+    });
+
+  const toggleMarket = (market: Market) =>
+    setState((current) => ({
+      ...current,
+      markets: current.markets.includes(market)
+        ? current.markets.filter((item) => item !== market)
+        : [...current.markets, market],
+    }));
+
+  const togglePreset = (preset: InvestorPreset) =>
+    setState((current) => ({
+      ...current,
+      presets: current.presets.includes(preset)
+        ? current.presets.filter((item) => item !== preset)
+        : [...current.presets, preset],
+    }));
 
   return (
     <View style={styles.container}>
       <FilterGroup title="시장" defaultExpanded>
         <View style={styles.chipRow}>
           {ALL_MARKETS.map((market) => {
-            const selected = markets.includes(market);
+            const selected = state.markets.includes(market);
             return (
               <Text
                 key={market}
@@ -129,60 +177,211 @@ export function ScreenerFilters() {
         </View>
       </FilterGroup>
 
-      <FilterGroup title="밸류에이션" checked={valuationEnabled} onCheckedChange={setValuationEnabled}>
-        <View style={styles.inlineRow}>
+      <FilterGroup
+        title="밸류에이션"
+        checked={groupChecked('valuation')}
+        indeterminate={groupIndeterminate('valuation')}
+        onCheckedChange={(checked) => toggleGroup('valuation', checked)}
+      >
+        <FilterRow checked={state.dividend.on} onCheckedChange={(on) => setRow('dividend', on)}>
           <Text style={styles.rowText}>배당수익률</Text>
-          <Select compact label="배당수익률" options={DIVIDEND_YIELD_OPTIONS} value={minDividendYield} onChange={setMinDividendYield} />
+          <Select
+            compact
+            label="배당수익률"
+            options={DIVIDEND_YIELD_OPTIONS}
+            value={state.dividend.value}
+            onChange={(value) => patch('dividend', { value, on: true })}
+          />
           <Text style={styles.rowText}>이상</Text>
-        </View>
+        </FilterRow>
       </FilterGroup>
 
-      <FilterGroup title="펀더멘털" checked={fundamentalEnabled} onCheckedChange={setFundamentalEnabled}>
-        <View style={styles.inlineRow}>
+      <FilterGroup
+        title="펀더멘털"
+        checked={groupChecked('fundamental')}
+        indeterminate={groupIndeterminate('fundamental')}
+        onCheckedChange={(checked) => toggleGroup('fundamental', checked)}
+      >
+        <FilterRow checked={state.turnaround.on} onCheckedChange={(on) => setRow('turnaround', on)}>
           <Text style={styles.rowText}>최근 분기</Text>
-          <Select compact label="최근 분기 흑자전환" options={TURNAROUND_OPTIONS} value={profitTurnaround} onChange={setProfitTurnaround} />
+          <Select
+            compact
+            label="최근 분기 흑자전환"
+            options={TURNAROUND_OPTIONS}
+            value={state.turnaround.value}
+            onChange={(value) => patch('turnaround', { value, on: true })}
+          />
           <Text style={styles.rowText}>흑자전환</Text>
-        </View>
-        <View style={styles.inlineRow}>
+        </FilterRow>
+        <FilterRow checked={state.netIncome.on} onCheckedChange={(on) => setRow('netIncome', on)}>
           <Text style={styles.rowText}>순이익 지속상승</Text>
-          <RadioGroup compact options={PERIOD_OPTIONS} value={netIncomePeriod} onChange={setNetIncomePeriod} />
+          <RadioGroup
+            compact
+            options={PERIOD_OPTIONS}
+            value={state.netIncome.period}
+            onChange={(period) => patch('netIncome', { period, on: true })}
+          />
           <Text style={styles.rowText}>연속</Text>
-          <Select compact label="순이익 연속 상승 횟수" options={CONSECUTIVE_OPTIONS} value={netIncomeConsecutive} onChange={setNetIncomeConsecutive} />
-        </View>
-        <View style={styles.inlineRow}>
+          <Select
+            compact
+            label="순이익 연속 상승 횟수"
+            options={CONSECUTIVE_OPTIONS}
+            value={state.netIncome.consecutive}
+            onChange={(consecutive) => patch('netIncome', { consecutive, on: true })}
+          />
+        </FilterRow>
+        <FilterRow checked={state.revenue.on} onCheckedChange={(on) => setRow('revenue', on)}>
           <Text style={styles.rowText}>매출 지속상승</Text>
-          <RadioGroup compact options={PERIOD_OPTIONS} value={revenuePeriod} onChange={setRevenuePeriod} />
+          <RadioGroup
+            compact
+            options={PERIOD_OPTIONS}
+            value={state.revenue.period}
+            onChange={(period) => patch('revenue', { period, on: true })}
+          />
           <Text style={styles.rowText}>연속</Text>
-          <Select compact label="매출 연속 상승 횟수" options={CONSECUTIVE_OPTIONS} value={revenueConsecutive} onChange={setRevenueConsecutive} />
-        </View>
+          <Select
+            compact
+            label="매출 연속 상승 횟수"
+            options={CONSECUTIVE_OPTIONS}
+            value={state.revenue.consecutive}
+            onChange={(consecutive) => patch('revenue', { consecutive, on: true })}
+          />
+        </FilterRow>
       </FilterGroup>
 
-      <FilterGroup title="수급" checked={flowEnabled} onCheckedChange={setFlowEnabled}>
-        <View style={styles.inlineRow}>
-          <Text style={styles.rowText}>기관 연속 순매수 최근</Text>
-          <Select compact label="기관 연속 순매수 거래일" options={NET_BUY_DAYS_OPTIONS} value={institutionalDays} onChange={setInstitutionalDays} />
-          <Text style={styles.rowText}>거래일</Text>
-        </View>
-        <View style={styles.inlineRow}>
-          <Text style={styles.rowText}>외인 연속 순매수 최근</Text>
-          <Select compact label="외인 연속 순매수 거래일" options={NET_BUY_DAYS_OPTIONS} value={foreignDays} onChange={setForeignDays} />
-          <Text style={styles.rowText}>거래일</Text>
-        </View>
-        <View style={styles.inlineRow}>
-          <Text style={styles.rowText}>연기금 연속 순매수 최근</Text>
-          <Select compact label="연기금 연속 순매수 거래일" options={NET_BUY_DAYS_OPTIONS} value={pensionDays} onChange={setPensionDays} />
-          <Text style={styles.rowText}>거래일</Text>
-        </View>
+      <FilterGroup
+        title="수급"
+        checked={groupChecked('flow')}
+        indeterminate={groupIndeterminate('flow')}
+        onCheckedChange={(checked) => toggleGroup('flow', checked)}
+      >
+        {([
+          ['institutional', '기관'],
+          ['foreign', '외인'],
+          ['pension', '연기금'],
+        ] as const).map(([key, label]) => (
+          <FilterRow key={key} checked={state[key].on} onCheckedChange={(on) => setRow(key, on)}>
+            <Text style={styles.rowText}>{label} 연속 순매수 최근</Text>
+            <Select
+              compact
+              label={`${label} 연속 순매수 거래일`}
+              options={NET_BUY_DAYS_OPTIONS}
+              value={state[key].days}
+              onChange={(days) => patch(key, { days, on: true })}
+            />
+            <Text style={styles.rowText}>거래일</Text>
+          </FilterRow>
+        ))}
       </FilterGroup>
 
-      <FilterGroup title="공매도" checked={shortEnabled} onCheckedChange={setShortEnabled}>
-        <View style={styles.inlineRow}>
+      <FilterGroup
+        title="공매도"
+        checked={groupChecked('short')}
+        indeterminate={groupIndeterminate('short')}
+        onCheckedChange={(checked) => toggleGroup('short', checked)}
+      >
+        <FilterRow checked={state.shortInterest.on} onCheckedChange={(on) => setRow('shortInterest', on)}>
           <Text style={styles.rowText}>공매도 잔고 감소</Text>
-          <Select compact label="며칠 전과 비교할지" options={SHORT_DAYS_AGO_OPTIONS} value={shortDaysAgo} onChange={setShortDaysAgo} />
+          <Select
+            compact
+            label="며칠 전과 비교할지"
+            options={SHORT_DAYS_AGO_OPTIONS}
+            value={state.shortInterest.daysAgo}
+            onChange={(daysAgo) => patch('shortInterest', { daysAgo, on: true })}
+          />
           <Text style={styles.rowText}>거래일 전대비</Text>
-          <Select compact label="감소율" options={SHORT_DROP_PCT_OPTIONS} value={shortMinDropPct} onChange={setShortMinDropPct} />
-        </View>
+          <Select
+            compact
+            label="감소율"
+            options={SHORT_DROP_PCT_OPTIONS}
+            value={state.shortInterest.minDropPct}
+            onChange={(minDropPct) => patch('shortInterest', { minDropPct, on: true })}
+          />
+        </FilterRow>
       </FilterGroup>
+
+      <FilterGroup
+        title="투자 대가 프리셋"
+        checked={AVAILABLE_PRESETS.every((preset) => state.presets.includes(preset))}
+        indeterminate={state.presets.length > 0 && state.presets.length < AVAILABLE_PRESETS.length}
+        onCheckedChange={(checked) =>
+          setState((current) => ({ ...current, presets: checked ? [...AVAILABLE_PRESETS] : [] }))
+        }
+      >
+        <Text style={styles.groupHint}>여러 명을 함께 선택하면 조건이 모두 겹치는 종목만 남습니다.</Text>
+        {INVESTOR_PRESETS.map((preset) => {
+          const info = PRESET_INFO[preset];
+          const pending = info.criteria.filter((criterion) => !criterion.applied).length;
+          return (
+            <FilterRow
+              key={preset}
+              checked={state.presets.includes(preset)}
+              onCheckedChange={() => togglePreset(preset)}
+              unavailable={!info.available}
+              note={
+                info.available
+                  ? pending > 0
+                    ? `일부 기준만 적용 중 (${pending}개 기준은 데이터 준비 중)`
+                    : undefined
+                  : '데이터 준비 중 - 기술적 지표 수집 후 활성화됩니다'
+              }
+            >
+              <Text style={styles.rowText}>{info.name}</Text>
+              <Text style={styles.tagline}>{info.tagline}</Text>
+              <Pressable onPress={() => setInfoPreset(preset)} hitSlop={8}>
+                <Text style={styles.infoMark}>!</Text>
+              </Pressable>
+            </FilterRow>
+          );
+        })}
+      </FilterGroup>
+
+      <FilterGroup title="기술적 패턴" note="데이터 준비 중">
+        <Text style={styles.groupHint}>
+          가격·거래량 히스토리 수집이 붙으면 활성화됩니다.
+        </Text>
+        {TECHNICAL_PATTERNS.map((pattern) => (
+          <FilterRow key={pattern.key} checked={false} onCheckedChange={() => {}} unavailable>
+            <Text style={styles.rowText}>{pattern.label}</Text>
+          </FilterRow>
+        ))}
+      </FilterGroup>
+
+      <Modal
+        visible={infoPreset != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setInfoPreset(null)}
+      >
+        <Pressable style={styles.overlay} onPress={() => setInfoPreset(null)}>
+          <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
+            {infoPreset ? <PresetInfoSheet preset={infoPreset} /> : null}
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </View>
+  );
+}
+
+function PresetInfoSheet({ preset }: { preset: InvestorPreset }) {
+  const info = PRESET_INFO[preset];
+  return (
+    <View>
+      <Text style={styles.sheetTitle}>{info.name}</Text>
+      <Text style={styles.sheetTagline}>{info.tagline}</Text>
+      <Text style={styles.sheetBody}>{info.description}</Text>
+      <Text style={styles.sheetSection}>스크리닝 기준</Text>
+      {info.criteria.map((criterion) => (
+        <View key={criterion.label} style={styles.criterionRow}>
+          <Text style={[styles.criterionMark, criterion.applied ? styles.criterionOn : styles.criterionOff]}>
+            {criterion.applied ? '✓' : '·'}
+          </Text>
+          <Text style={[styles.criterionText, !criterion.applied && styles.criterionTextOff]}>
+            {criterion.label}
+            {criterion.applied ? '' : ' (준비 중)'}
+          </Text>
+        </View>
+      ))}
     </View>
   );
 }
@@ -198,7 +397,7 @@ const styles = StyleSheet.create({
   chip: {
     paddingVertical: 8,
     paddingHorizontal: 16,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     backgroundColor: colors.surfaceMuted,
     color: colors.textMuted,
     fontWeight: '600',
@@ -208,15 +407,89 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentSoft,
     color: colors.accent,
   },
-  inlineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 8,
-    paddingVertical: 8,
-  },
   rowText: {
     fontSize: 14,
     color: colors.text,
+  },
+  tagline: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  infoMark: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.accentSoft,
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'center',
+    lineHeight: 18,
+    overflow: 'hidden',
+  },
+  groupHint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    paddingBottom: spacing.xs,
+  },
+  overlay: {
+    flex: 1,
+    backgroundColor: colors.overlay,
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    padding: spacing.lg,
+    paddingBottom: spacing.xl,
+  },
+  sheetTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  sheetTagline: {
+    fontSize: 13,
+    color: colors.accent,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  sheetBody: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: colors.text,
+    marginTop: spacing.md,
+  },
+  sheetSection: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textMuted,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  criterionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingVertical: 3,
+  },
+  criterionMark: {
+    fontSize: 13,
+    fontWeight: '700',
+    width: 12,
+  },
+  criterionOn: {
+    color: colors.accent,
+  },
+  criterionOff: {
+    color: colors.textMuted,
+  },
+  criterionText: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.text,
+  },
+  criterionTextOff: {
+    color: colors.textMuted,
   },
 });

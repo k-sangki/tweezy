@@ -1,17 +1,30 @@
 import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, spacing } from '../lib/theme';
+import { Checkbox } from './Checkbox';
 
 export interface FilterGroupProps {
   title: string;
   defaultExpanded?: boolean;
   children: ReactNode;
-  /** When provided, shows a checkbox that turns this whole group's filter on/off at its default values. */
+  /** When provided, shows a checkbox that turns every row in the group on/off at once. */
   checked?: boolean;
+  /** Some rows on, some off. */
+  indeterminate?: boolean;
   onCheckedChange?: (checked: boolean) => void;
+  /** Short annotation next to the title, e.g. "데이터 준비 중". */
+  note?: string;
 }
 
-export function FilterGroup({ title, defaultExpanded = false, children, checked, onCheckedChange }: FilterGroupProps) {
+export function FilterGroup({
+  title,
+  defaultExpanded = false,
+  children,
+  checked,
+  indeterminate,
+  onCheckedChange,
+  note,
+}: FilterGroupProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const hasCheckbox = onCheckedChange != null;
 
@@ -23,11 +36,14 @@ export function FilterGroup({ title, defaultExpanded = false, children, checked,
           onPress={() => (hasCheckbox ? onCheckedChange?.(!checked) : setExpanded((value) => !value))}
         >
           {hasCheckbox ? (
-            <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
-              {checked ? <Text style={styles.checkboxMark}>✓</Text> : null}
-            </View>
+            <Checkbox
+              checked={!!checked}
+              indeterminate={indeterminate}
+              onPress={() => onCheckedChange?.(!checked)}
+            />
           ) : null}
           <Text style={styles.title}>{title}</Text>
+          {note ? <Text style={styles.note}>{note}</Text> : null}
         </Pressable>
         <Pressable style={styles.chevronButton} onPress={() => setExpanded((value) => !value)} hitSlop={8}>
           <Text style={[styles.chevron, expanded && styles.chevronOpen]}>⌄</Text>
@@ -57,24 +73,9 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 16,
   },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surfaceMuted,
-  },
-  checkboxChecked: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accent,
-  },
-  checkboxMark: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '700',
+  note: {
+    fontSize: 11,
+    color: colors.textMuted,
   },
   title: {
     fontSize: 16,

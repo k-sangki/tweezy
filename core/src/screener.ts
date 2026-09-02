@@ -1,3 +1,4 @@
+import { matchesPreset } from './presets';
 import type { GrowthStreakFilter, ProfitTurnaroundMode, ScreenerFilter, ShortInterestDropFilter, Stock } from './types';
 
 /** 'yoy' compares against the same quarter one year ago (index 4 in a most-recent-first quarterly series). */
@@ -87,6 +88,9 @@ export function applyFilters(stocks: Stock[], filter: ScreenerFilter): Stock[] {
       return false;
     }
     if (filter.shortInterestDrop && !hasShortInterestDrop(stock.shortInterestBalance, filter.shortInterestDrop)) {
+      return false;
+    }
+    if (filter.presets?.some((preset) => !matchesPreset(stock, preset))) {
       return false;
     }
     return true;
