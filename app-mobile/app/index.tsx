@@ -10,7 +10,7 @@ export default function TitleScreen() {
         <Text style={styles.title}>Tweezy</Text>
         <Text style={styles.subtitle}>한국 주식 스크리너</Text>
       </View>
-      <Pressable style={styles.button} onPress={() => router.push('/screener')}>
+      <Pressable style={styles.button} onPress={() => router.replace('/screener')}>
         <Text style={styles.buttonText}>시작하기</Text>
       </Pressable>
     </View>

@@ -17,8 +17,6 @@ export interface ScreenerFilter {
   markets?: Market[];
   minMarketCap?: number;
   maxMarketCap?: number;
-  minPer?: number;
-  maxPer?: number;
   minPbr?: number;
   maxPbr?: number;
   minDividendYield?: number;

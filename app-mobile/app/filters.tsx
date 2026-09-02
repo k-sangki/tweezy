@@ -1,7 +1,8 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { Market, ScreenerFilter } from '@tweezy/core';
+import { FilterGroup } from '../components/FilterGroup';
 import { useScreener } from '../lib/ScreenerContext';
 
 const ALL_MARKETS: Market[] = ['KOSPI', 'KOSDAQ'];
@@ -21,7 +22,6 @@ export default function FiltersScreen() {
   const router = useRouter();
   const { filter, setFilter } = useScreener();
   const [markets, setMarkets] = useState<Market[]>(filter.markets ?? []);
-  const [maxPerText, setMaxPerText] = useState(toInputText(filter.maxPer));
   const [minDividendYieldText, setMinDividendYieldText] = useState(
     toInputText(filter.minDividendYield),
   );
@@ -35,7 +35,6 @@ export default function FiltersScreen() {
   const apply = () => {
     const next: ScreenerFilter = {
       markets: markets.length > 0 ? markets : undefined,
-      maxPer: parseInputNumber(maxPerText),
       minDividendYield: parseInputNumber(minDividendYieldText),
     };
     setFilter(next);
@@ -44,46 +43,41 @@ export default function FiltersScreen() {
 
   const reset = () => {
     setMarkets([]);
-    setMaxPerText('');
     setMinDividendYieldText('');
     setFilter({});
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>시장</Text>
-      <View style={styles.chipRow}>
-        {ALL_MARKETS.map((market) => {
-          const selected = markets.includes(market);
-          return (
-            <Pressable
-              key={market}
-              onPress={() => toggleMarket(market)}
-              style={[styles.chip, selected && styles.chipSelected]}
-            >
-              <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{market}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <FilterGroup title="시장" defaultExpanded>
+          <View style={styles.chipRow}>
+            {ALL_MARKETS.map((market) => {
+              const selected = markets.includes(market);
+              return (
+                <Pressable
+                  key={market}
+                  onPress={() => toggleMarket(market)}
+                  style={[styles.chip, selected && styles.chipSelected]}
+                >
+                  <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{market}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </FilterGroup>
 
-      <Text style={styles.label}>PER 이하</Text>
-      <TextInput
-        style={styles.input}
-        keyboardType="numeric"
-        placeholder="예: 20"
-        value={maxPerText}
-        onChangeText={setMaxPerText}
-      />
-
-      <Text style={styles.label}>배당수익률(%) 이상</Text>
-      <TextInput
-        style={styles.input}
-        keyboardType="numeric"
-        placeholder="예: 1"
-        value={minDividendYieldText}
-        onChangeText={setMinDividendYieldText}
-      />
+        <FilterGroup title="밸류에이션" defaultExpanded>
+          <Text style={styles.label}>배당수익률(%) 이상</Text>
+          <TextInput
+            style={styles.input}
+            keyboardType="numeric"
+            placeholder="예: 1"
+            value={minDividendYieldText}
+            onChangeText={setMinDividendYieldText}
+          />
+        </FilterGroup>
+      </ScrollView>
 
       <View style={styles.actions}>
         <Pressable style={[styles.button, styles.resetButton]} onPress={reset}>
@@ -101,12 +95,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
-    padding: 16,
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginTop: 16,
+    fontSize: 13,
+    color: '#666',
     marginBottom: 8,
   },
   chipRow: {
@@ -142,7 +137,9 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 32,
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
   },
   button: {
     flex: 1,
