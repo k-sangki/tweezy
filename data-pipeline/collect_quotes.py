@@ -40,6 +40,8 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 from pykrx import stock
 
+import dart_financials
+
 SEOUL = ZoneInfo("Asia/Seoul")
 MIN_CLOSE = 100
 LOGGER = logging.getLogger("collect_quotes")
@@ -49,6 +51,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", default="data/kr-quotes.json")
     parser.add_argument("--dart-api-key", default=None, help="defaults to $DART_API_KEY")
+    parser.add_argument("--financials-cache", default=".cache/dart_financials.json")
+    parser.add_argument("--skip-financials", action="store_true", help="skip quarterly/annual profit+revenue collection")
     return parser.parse_args()
 
 
@@ -124,11 +128,25 @@ def main() -> None:
 
     dart_api_key = args.dart_api_key or os.environ.get("DART_API_KEY", "").strip()
     corp_codes: dict[str, str] = {}
+    financials: dict[str, dict[str, list[float | None]]] = {}
     if dart_api_key:
         LOGGER.info("OpenDART corp_code 매핑 다운로드 중")
         corp_codes = download_corp_codes(dart_api_key)
+
+        if not args.skip_financials:
+            financials_cache_path = Path(args.financials_cache)
+            financials = dart_financials.load_cache(financials_cache_path, now) or {}
+            corp_codes_needing_financials = [
+                code for ticker, code in corp_codes.items() if ticker in market_cap.index and code not in financials
+            ]
+            if corp_codes_needing_financials:
+                LOGGER.info("OpenDART 재무제표(순이익/매출) 수집 시작: %s개 기업", len(corp_codes_needing_financials))
+                financials.update(dart_financials.collect_financials(dart_api_key, corp_codes_needing_financials, now))
+                dart_financials.save_cache(financials_cache_path, now, financials)
+            else:
+                LOGGER.info("OpenDART 재무제표 캐시 재사용 (%s개 기업)", len(financials))
     else:
-        LOGGER.warning("DART_API_KEY가 없어 corpCode 매핑을 건너뜁니다.")
+        LOGGER.warning("DART_API_KEY가 없어 corpCode 매핑 및 재무제표 수집을 건너뜁니다.")
 
     items: list[dict[str, Any]] = []
     for raw_ticker in cap_frame.index:
@@ -145,25 +163,31 @@ def main() -> None:
             pbr = float(row["PBR"]) or None
             dividend_yield = float(row["DIV"]) or None
 
-        items.append(
-            {
-                "ticker": ticker,
-                "name": str(stock.get_market_ticker_name(ticker) or ticker),
-                "market": market,
-                "price": int(round(price)),
-                "marketCap": int(market_cap.get(ticker, 0)),
-                "per": per,
-                "pbr": pbr,
-                "dividendYield": dividend_yield,
-                "corpCode": corp_codes.get(ticker),
-            }
-        )
+        corp_code = corp_codes.get(ticker)
+        item_financials = financials.get(corp_code) if corp_code else None
+
+        item = {
+            "ticker": ticker,
+            "name": str(stock.get_market_ticker_name(ticker) or ticker),
+            "market": market,
+            "price": int(round(price)),
+            "marketCap": int(market_cap.get(ticker, 0)),
+            "per": per,
+            "pbr": pbr,
+            "dividendYield": dividend_yield,
+            "corpCode": corp_code,
+        }
+        if item_financials:
+            item.update(item_financials)
+        items.append(item)
 
     items.sort(key=lambda item: -item["marketCap"])
 
     payload = {
         "updatedAt": f"{datetime.strptime(date, '%Y%m%d').strftime('%Y-%m-%d')} {now.strftime('%H:%M')} KST",
-        "source": "KRX adjusted OHLCV/fundamentals via pykrx" + (" · OpenDART corp_code" if corp_codes else ""),
+        "source": "KRX adjusted OHLCV/fundamentals via pykrx"
+        + (" · OpenDART corp_code" if corp_codes else "")
+        + (" · OpenDART financials" if financials else ""),
         "items": items,
     }
 

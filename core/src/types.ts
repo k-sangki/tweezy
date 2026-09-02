@@ -11,6 +11,28 @@ export interface Stock {
   dividendYield: number | null;
   /** OpenDART 8-digit corp_code, when known. Needed to query disclosures for this stock. */
   corpCode?: string | null;
+  /**
+   * Standalone-period net income / revenue, most recent first. Quarterly
+   * arrays hold up to the last 5 quarters (index 4 = same quarter one
+   * year ago); annual arrays hold up to the last 5 fiscal years. A gap
+   * (period with no filed data) is `null`, not omitted, so index position
+   * stays meaningful.
+   */
+  quarterlyNetIncome?: (number | null)[];
+  quarterlyRevenue?: (number | null)[];
+  annualNetIncome?: (number | null)[];
+  annualRevenue?: (number | null)[];
+}
+
+/** 'qoq' = 직전 분기 대비 흑자전환, 'yoy' = 전년 동기 대비 흑자전환 */
+export type ProfitTurnaroundMode = 'qoq' | 'yoy';
+
+export type GrowthPeriodType = 'quarterly' | 'annual';
+
+export interface GrowthStreakFilter {
+  period: GrowthPeriodType;
+  /** Number of consecutive period-over-period increases required. */
+  consecutive: 1 | 2 | 3 | 4;
 }
 
 export interface ScreenerFilter {
@@ -20,4 +42,7 @@ export interface ScreenerFilter {
   minPbr?: number;
   maxPbr?: number;
   minDividendYield?: number;
+  profitTurnaround?: ProfitTurnaroundMode;
+  netIncomeStreak?: GrowthStreakFilter;
+  revenueStreak?: GrowthStreakFilter;
 }

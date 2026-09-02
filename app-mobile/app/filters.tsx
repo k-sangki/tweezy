@@ -1,11 +1,37 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import type { Market, ScreenerFilter } from '@tweezy/core';
+import type {
+  GrowthPeriodType,
+  GrowthStreakFilter,
+  Market,
+  ProfitTurnaroundMode,
+  ScreenerFilter,
+} from '@tweezy/core';
+import { ChipSelect } from '../components/ChipSelect';
 import { FilterGroup } from '../components/FilterGroup';
 import { useScreener } from '../lib/ScreenerContext';
 
 const ALL_MARKETS: Market[] = ['KOSPI', 'KOSDAQ'];
+
+const TURNAROUND_OPTIONS: { label: string; value: ProfitTurnaroundMode | undefined }[] = [
+  { label: '미사용', value: undefined },
+  { label: '직전분기 대비', value: 'qoq' },
+  { label: '전년동기 대비', value: 'yoy' },
+];
+
+const PERIOD_OPTIONS: { label: string; value: GrowthPeriodType }[] = [
+  { label: '분기', value: 'quarterly' },
+  { label: '연간', value: 'annual' },
+];
+
+const CONSECUTIVE_OPTIONS: { label: string; value: 0 | 1 | 2 | 3 | 4 }[] = [
+  { label: '미사용', value: 0 },
+  { label: '1', value: 1 },
+  { label: '2', value: 2 },
+  { label: '3', value: 3 },
+  { label: '4', value: 4 },
+];
 
 function toInputText(value: number | undefined): string {
   return value == null ? '' : String(value);
@@ -18,12 +44,29 @@ function parseInputNumber(text: string): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function toStreakFilter(period: GrowthPeriodType, consecutive: 0 | 1 | 2 | 3 | 4): GrowthStreakFilter | undefined {
+  return consecutive === 0 ? undefined : { period, consecutive };
+}
+
 export default function FiltersScreen() {
   const router = useRouter();
   const { filter, setFilter } = useScreener();
   const [markets, setMarkets] = useState<Market[]>(filter.markets ?? []);
   const [minDividendYieldText, setMinDividendYieldText] = useState(
     toInputText(filter.minDividendYield),
+  );
+  const [profitTurnaround, setProfitTurnaround] = useState(filter.profitTurnaround);
+  const [netIncomePeriod, setNetIncomePeriod] = useState<GrowthPeriodType>(
+    filter.netIncomeStreak?.period ?? 'quarterly',
+  );
+  const [netIncomeConsecutive, setNetIncomeConsecutive] = useState<0 | 1 | 2 | 3 | 4>(
+    filter.netIncomeStreak?.consecutive ?? 0,
+  );
+  const [revenuePeriod, setRevenuePeriod] = useState<GrowthPeriodType>(
+    filter.revenueStreak?.period ?? 'quarterly',
+  );
+  const [revenueConsecutive, setRevenueConsecutive] = useState<0 | 1 | 2 | 3 | 4>(
+    filter.revenueStreak?.consecutive ?? 0,
   );
 
   const toggleMarket = (market: Market) => {
@@ -36,6 +79,9 @@ export default function FiltersScreen() {
     const next: ScreenerFilter = {
       markets: markets.length > 0 ? markets : undefined,
       minDividendYield: parseInputNumber(minDividendYieldText),
+      profitTurnaround,
+      netIncomeStreak: toStreakFilter(netIncomePeriod, netIncomeConsecutive),
+      revenueStreak: toStreakFilter(revenuePeriod, revenueConsecutive),
     };
     setFilter(next);
     router.back();
@@ -44,6 +90,11 @@ export default function FiltersScreen() {
   const reset = () => {
     setMarkets([]);
     setMinDividendYieldText('');
+    setProfitTurnaround(undefined);
+    setNetIncomePeriod('quarterly');
+    setNetIncomeConsecutive(0);
+    setRevenuePeriod('quarterly');
+    setRevenueConsecutive(0);
     setFilter({});
   };
 
@@ -77,6 +128,21 @@ export default function FiltersScreen() {
             onChangeText={setMinDividendYieldText}
           />
         </FilterGroup>
+
+        <FilterGroup title="펀더멘털">
+          <Text style={styles.label}>최근 분기 흑자전환</Text>
+          <ChipSelect options={TURNAROUND_OPTIONS} value={profitTurnaround} onChange={setProfitTurnaround} />
+
+          <Text style={[styles.label, styles.labelSpaced]}>순이익 지속상승</Text>
+          <ChipSelect options={PERIOD_OPTIONS} value={netIncomePeriod} onChange={setNetIncomePeriod} />
+          <View style={styles.spacer} />
+          <ChipSelect options={CONSECUTIVE_OPTIONS} value={netIncomeConsecutive} onChange={setNetIncomeConsecutive} />
+
+          <Text style={[styles.label, styles.labelSpaced]}>매출 지속상승</Text>
+          <ChipSelect options={PERIOD_OPTIONS} value={revenuePeriod} onChange={setRevenuePeriod} />
+          <View style={styles.spacer} />
+          <ChipSelect options={CONSECUTIVE_OPTIONS} value={revenueConsecutive} onChange={setRevenueConsecutive} />
+        </FilterGroup>
       </ScrollView>
 
       <View style={styles.actions}>
@@ -103,6 +169,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#666',
     marginBottom: 8,
+  },
+  labelSpaced: {
+    marginTop: 16,
+  },
+  spacer: {
+    height: 8,
   },
   chipRow: {
     flexDirection: 'row',
