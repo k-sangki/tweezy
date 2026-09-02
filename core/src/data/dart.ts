@@ -49,7 +49,9 @@ export class DartClient {
 
   constructor(options: DartClientOptions) {
     this.apiKey = options.apiKey;
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    // Bind: an unbound `fetch` reference throws "Illegal invocation" in
+    // browsers when called without `window` as `this`.
+    this.fetchImpl = options.fetchImpl ?? fetch.bind(globalThis);
   }
 
   async searchDisclosures(query: DisclosureQuery = {}): Promise<DisclosureSearchResult> {

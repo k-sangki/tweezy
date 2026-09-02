@@ -36,8 +36,9 @@ export function ScreenerProvider({ children }: { children: ReactNode }) {
         setStocks(liveStocks);
         setIsLiveData(true);
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         // data/kr-quotes.json isn't published yet (or unreachable) - keep sample data.
+        console.error('[ScreenerProvider] live feed fetch failed, using sample data:', error);
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);

@@ -26,7 +26,9 @@ export class StaticFeedMarketDataProvider implements MarketDataProvider {
 
   constructor(options: StaticFeedProviderOptions) {
     this.feedUrl = options.feedUrl;
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    // Bind: an unbound `fetch` reference throws "Illegal invocation" in
+    // browsers when called without `window` as `this`.
+    this.fetchImpl = options.fetchImpl ?? fetch.bind(globalThis);
   }
 
   async getStocks(): Promise<Stock[]> {
