@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type {
   GrowthPeriodType,
@@ -9,36 +9,37 @@ import type {
   ScreenerFilter,
   ShortInterestDropFilter,
 } from '@tweezy/core';
-import { ChipSelect } from '../components/ChipSelect';
 import { FilterGroup } from '../components/FilterGroup';
+import { Select } from '../components/Select';
+import { colors, radius, spacing } from '../lib/theme';
 import { useScreener } from '../lib/ScreenerContext';
 
 const ALL_MARKETS: Market[] = ['KOSPI', 'KOSDAQ'];
 
 const TURNAROUND_OPTIONS: { label: string; value: ProfitTurnaroundMode | undefined }[] = [
-  { label: '미사용', value: undefined },
-  { label: '직전분기 대비', value: 'qoq' },
-  { label: '전년동기 대비', value: 'yoy' },
+  { label: '전체', value: undefined },
+  { label: '직전분기 대비 흑자전환', value: 'qoq' },
+  { label: '전년동기 대비 흑자전환', value: 'yoy' },
 ];
 
 const PERIOD_OPTIONS: { label: string; value: GrowthPeriodType }[] = [
-  { label: '분기', value: 'quarterly' },
-  { label: '연간', value: 'annual' },
+  { label: '분기 기준', value: 'quarterly' },
+  { label: '연간 기준', value: 'annual' },
 ];
 
 const CONSECUTIVE_OPTIONS: { label: string; value: 0 | 1 | 2 | 3 | 4 }[] = [
-  { label: '미사용', value: 0 },
-  { label: '1', value: 1 },
-  { label: '2', value: 2 },
-  { label: '3', value: 3 },
-  { label: '4', value: 4 },
+  { label: '전체', value: 0 },
+  { label: '1회 이상 연속 증가', value: 1 },
+  { label: '2회 이상 연속 증가', value: 2 },
+  { label: '3회 이상 연속 증가', value: 3 },
+  { label: '4회 이상 연속 증가', value: 4 },
 ];
 
 const DROP_PCT_OPTIONS: { label: string; value: 5 | 10 | 20 | undefined }[] = [
-  { label: '미사용', value: undefined },
-  { label: '5% 이상', value: 5 },
-  { label: '10% 이상', value: 10 },
-  { label: '20% 이상', value: 20 },
+  { label: '전체', value: undefined },
+  { label: '5% 이상 감소', value: 5 },
+  { label: '10% 이상 감소', value: 10 },
+  { label: '20% 이상 감소', value: 20 },
 ];
 
 function toInputText(value: number | undefined): string {
@@ -62,6 +63,15 @@ function toShortInterestDropFilter(
 ): ShortInterestDropFilter | undefined {
   const daysAgo = parseInputNumber(daysAgoText);
   return daysAgo == null || minDropPct == null ? undefined : { daysAgo, minDropPct };
+}
+
+function FilterRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <View style={styles.row}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      {children}
+    </View>
+  );
 }
 
 export default function FiltersScreen() {
@@ -153,71 +163,76 @@ export default function FiltersScreen() {
         </FilterGroup>
 
         <FilterGroup title="밸류에이션" defaultExpanded>
-          <Text style={styles.label}>배당수익률(%) 이상</Text>
-          <TextInput
-            style={styles.input}
-            keyboardType="numeric"
-            placeholder="예: 1"
-            value={minDividendYieldText}
-            onChangeText={setMinDividendYieldText}
-          />
+          <FilterRow label="배당수익률(%) 이상">
+            <TextInput
+              style={styles.rowInput}
+              keyboardType="numeric"
+              placeholder="예: 1"
+              placeholderTextColor={colors.textMuted}
+              value={minDividendYieldText}
+              onChangeText={setMinDividendYieldText}
+            />
+          </FilterRow>
         </FilterGroup>
 
         <FilterGroup title="펀더멘털">
-          <Text style={styles.label}>최근 분기 흑자전환</Text>
-          <ChipSelect options={TURNAROUND_OPTIONS} value={profitTurnaround} onChange={setProfitTurnaround} />
-
-          <Text style={[styles.label, styles.labelSpaced]}>순이익 지속상승</Text>
-          <ChipSelect options={PERIOD_OPTIONS} value={netIncomePeriod} onChange={setNetIncomePeriod} />
-          <View style={styles.spacer} />
-          <ChipSelect options={CONSECUTIVE_OPTIONS} value={netIncomeConsecutive} onChange={setNetIncomeConsecutive} />
-
-          <Text style={[styles.label, styles.labelSpaced]}>매출 지속상승</Text>
-          <ChipSelect options={PERIOD_OPTIONS} value={revenuePeriod} onChange={setRevenuePeriod} />
-          <View style={styles.spacer} />
-          <ChipSelect options={CONSECUTIVE_OPTIONS} value={revenueConsecutive} onChange={setRevenueConsecutive} />
+          <Select label="최근 분기 흑자전환" options={TURNAROUND_OPTIONS} value={profitTurnaround} onChange={setProfitTurnaround} />
+          <View style={styles.divider} />
+          <Text style={styles.subLabel}>순이익 지속상승</Text>
+          <Select label="기준" options={PERIOD_OPTIONS} value={netIncomePeriod} onChange={setNetIncomePeriod} />
+          <Select label="조건" options={CONSECUTIVE_OPTIONS} value={netIncomeConsecutive} onChange={setNetIncomeConsecutive} />
+          <View style={styles.divider} />
+          <Text style={styles.subLabel}>매출 지속상승</Text>
+          <Select label="기준" options={PERIOD_OPTIONS} value={revenuePeriod} onChange={setRevenuePeriod} />
+          <Select label="조건" options={CONSECUTIVE_OPTIONS} value={revenueConsecutive} onChange={setRevenueConsecutive} />
         </FilterGroup>
 
         <FilterGroup title="수급">
-          <Text style={styles.label}>기관 순매수 (최근 N거래일, 순매수 합 &gt; 0)</Text>
-          <TextInput
-            style={styles.input}
-            keyboardType="numeric"
-            placeholder="예: 20"
-            value={institutionalDaysText}
-            onChangeText={setInstitutionalDaysText}
-          />
-
-          <Text style={[styles.label, styles.labelSpaced]}>외인 순매수 (최근 N거래일)</Text>
-          <TextInput
-            style={styles.input}
-            keyboardType="numeric"
-            placeholder="예: 20"
-            value={foreignDaysText}
-            onChangeText={setForeignDaysText}
-          />
-
-          <Text style={[styles.label, styles.labelSpaced]}>연기금 순매수 (최근 N거래일)</Text>
-          <TextInput
-            style={styles.input}
-            keyboardType="numeric"
-            placeholder="예: 20"
-            value={pensionDaysText}
-            onChangeText={setPensionDaysText}
-          />
+          <FilterRow label="기관 순매수 (최근 N거래일)">
+            <TextInput
+              style={styles.rowInput}
+              keyboardType="numeric"
+              placeholder="예: 20"
+              placeholderTextColor={colors.textMuted}
+              value={institutionalDaysText}
+              onChangeText={setInstitutionalDaysText}
+            />
+          </FilterRow>
+          <FilterRow label="외인 순매수 (최근 N거래일)">
+            <TextInput
+              style={styles.rowInput}
+              keyboardType="numeric"
+              placeholder="예: 20"
+              placeholderTextColor={colors.textMuted}
+              value={foreignDaysText}
+              onChangeText={setForeignDaysText}
+            />
+          </FilterRow>
+          <FilterRow label="연기금 순매수 (최근 N거래일)">
+            <TextInput
+              style={styles.rowInput}
+              keyboardType="numeric"
+              placeholder="예: 20"
+              placeholderTextColor={colors.textMuted}
+              value={pensionDaysText}
+              onChangeText={setPensionDaysText}
+            />
+          </FilterRow>
+          <Text style={styles.hint}>순매수 합이 0보다 큰 종목을 찾습니다.</Text>
         </FilterGroup>
 
         <FilterGroup title="공매도">
-          <Text style={styles.label}>공매도 잔고 급감 - N거래일 전 대비</Text>
-          <TextInput
-            style={styles.input}
-            keyboardType="numeric"
-            placeholder="예: 20"
-            value={shortDaysAgoText}
-            onChangeText={setShortDaysAgoText}
-          />
-          <View style={styles.spacer} />
-          <ChipSelect options={DROP_PCT_OPTIONS} value={shortMinDropPct} onChange={setShortMinDropPct} />
+          <FilterRow label="N거래일 전 대비">
+            <TextInput
+              style={styles.rowInput}
+              keyboardType="numeric"
+              placeholder="예: 20"
+              placeholderTextColor={colors.textMuted}
+              value={shortDaysAgoText}
+              onChangeText={setShortDaysAgoText}
+            />
+          </FilterRow>
+          <Select label="공매도 잔고 급감" options={DROP_PCT_OPTIONS} value={shortMinDropPct} onChange={setShortMinDropPct} />
         </FilterGroup>
       </ScrollView>
 
@@ -236,77 +251,90 @@ export default function FiltersScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.background,
   },
   scrollContent: {
-    paddingHorizontal: 16,
-  },
-  label: {
-    fontSize: 13,
-    color: '#666',
-    marginBottom: 8,
-  },
-  labelSpaced: {
-    marginTop: 16,
-  },
-  spacer: {
-    height: 8,
+    padding: spacing.md,
+    paddingBottom: spacing.xl,
   },
   chipRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: spacing.sm,
   },
   chip: {
     paddingVertical: 8,
     paddingHorizontal: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#ccc',
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceMuted,
   },
   chipSelected: {
-    backgroundColor: '#0a7ea4',
-    borderColor: '#0a7ea4',
+    backgroundColor: colors.accentSoft,
   },
   chipText: {
-    color: '#333',
-  },
-  chipTextSelected: {
-    color: '#fff',
+    color: colors.textMuted,
     fontWeight: '600',
   },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
+  chipTextSelected: {
+    color: colors.accent,
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+  },
+  rowLabel: {
+    fontSize: 15,
+    color: colors.text,
+    flex: 1,
+  },
+  rowInput: {
+    fontSize: 15,
+    color: colors.accent,
+    fontWeight: '600',
+    textAlign: 'right',
+    minWidth: 60,
+  },
+  subLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textMuted,
+    marginTop: spacing.sm,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: spacing.xs,
+  },
+  hint: {
+    fontSize: 12,
+    color: colors.textMuted,
+    paddingBottom: spacing.xs,
   },
   actions: {
     flexDirection: 'row',
-    gap: 12,
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
+    gap: spacing.sm,
+    padding: spacing.md,
+    backgroundColor: colors.surface,
   },
   button: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 8,
+    paddingVertical: 16,
+    borderRadius: radius.md,
     alignItems: 'center',
   },
   resetButton: {
-    backgroundColor: '#f2f2f2',
+    backgroundColor: colors.surfaceMuted,
   },
   resetButtonText: {
-    color: '#333',
-    fontWeight: '600',
+    color: colors.text,
+    fontWeight: '700',
   },
   applyButton: {
-    backgroundColor: '#0a7ea4',
+    backgroundColor: colors.accent,
   },
   applyButtonText: {
     color: '#fff',
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });

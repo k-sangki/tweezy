@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { colors, radius, spacing } from '../lib/theme';
 
 export interface FilterGroupProps {
   title: string;
@@ -14,7 +15,7 @@ export function FilterGroup({ title, defaultExpanded = false, children }: Filter
     <View style={styles.container}>
       <Pressable style={styles.header} onPress={() => setExpanded((value) => !value)}>
         <Text style={styles.title}>{title}</Text>
-        <Text style={styles.chevron}>{expanded ? '▲' : '▼'}</Text>
+        <Text style={[styles.chevron, expanded && styles.chevronOpen]}>⌄</Text>
       </Pressable>
       {expanded ? <View style={styles.content}>{children}</View> : null}
     </View>
@@ -23,24 +24,31 @@ export function FilterGroup({ title, defaultExpanded = false, children }: Filter
 
 const styles = StyleSheet.create({
   container: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 14,
+    paddingVertical: 16,
   },
   title: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
+    color: colors.text,
   },
   chevron: {
-    fontSize: 12,
-    color: '#888',
+    fontSize: 16,
+    color: colors.textMuted,
+    transform: [{ rotate: '0deg' }],
+  },
+  chevronOpen: {
+    transform: [{ rotate: '180deg' }],
   },
   content: {
-    paddingBottom: 16,
+    paddingBottom: spacing.md,
   },
 });

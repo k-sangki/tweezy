@@ -28,23 +28,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 4,
   },
   containerPressed: {
-    backgroundColor: '#f2f2f2',
+    backgroundColor: '#F9FAFB',
   },
   name: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
+    color: '#191F28',
   },
   ticker: {
     fontSize: 12,
-    color: '#888',
+    color: '#8B95A1',
     marginTop: 2,
   },
   price: {
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '600',
+    color: '#191F28',
   },
 });

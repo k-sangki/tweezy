@@ -2,6 +2,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { DartClient, DartApiError, type Disclosure } from '@tweezy/core';
+import { colors, radius, spacing } from '../../lib/theme';
 import { useScreener } from '../../lib/ScreenerContext';
 
 // EXPO_PUBLIC_* vars are inlined into the client bundle at build time, so
@@ -122,66 +123,76 @@ function DisclosureRow({ disclosure }: { disclosure: Disclosure }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-    padding: 16,
+    backgroundColor: colors.background,
+    padding: spacing.md,
   },
   header: {
-    marginBottom: 20,
+    marginBottom: spacing.md,
   },
   name: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.text,
   },
   subtitle: {
     fontSize: 13,
-    color: '#888',
+    color: colors.textMuted,
     marginTop: 2,
   },
   price: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginTop: 8,
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: spacing.sm,
   },
   metricsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 24,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.md,
   },
   metric: {
+    flex: 1,
     alignItems: 'center',
   },
   metricLabel: {
     fontSize: 12,
-    color: '#888',
+    color: colors.textMuted,
   },
   metricValue: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
+    color: colors.text,
     marginTop: 4,
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
-    marginBottom: 8,
+    color: colors.text,
+    marginBottom: spacing.sm,
   },
   separator: {
     height: 1,
-    backgroundColor: '#eee',
+    backgroundColor: colors.border,
   },
   disclosureRow: {
-    paddingVertical: 10,
+    backgroundColor: colors.surface,
+    paddingVertical: 12,
   },
   disclosureReport: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
+    color: colors.text,
   },
   disclosureMeta: {
     fontSize: 12,
-    color: '#888',
+    color: colors.textMuted,
     marginTop: 2,
   },
   empty: {
-    color: '#888',
-    marginTop: 8,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
   },
 });

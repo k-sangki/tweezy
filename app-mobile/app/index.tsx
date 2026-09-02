@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { colors, radius, spacing } from '../lib/theme';
 
 export default function TitleScreen() {
   const router = useRouter();
@@ -20,34 +21,35 @@ export default function TitleScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
+    padding: spacing.lg,
   },
   brand: {
     alignItems: 'center',
-    marginBottom: 48,
+    marginBottom: spacing.xl,
   },
   title: {
     fontSize: 40,
     fontWeight: '800',
-    color: '#0a7ea4',
+    color: colors.text,
+    letterSpacing: -1,
   },
   subtitle: {
     fontSize: 15,
-    color: '#666',
-    marginTop: 8,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
   },
   button: {
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    borderRadius: 8,
-    backgroundColor: '#0a7ea4',
+    paddingVertical: 16,
+    paddingHorizontal: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.accent,
   },
   buttonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });
