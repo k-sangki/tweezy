@@ -1,31 +1,38 @@
 import type { ReactNode } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, spacing } from '../lib/theme';
 import { Checkbox } from './Checkbox';
 
 export interface FilterRowProps {
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
-  /** Label text and inline controls - laid out on one line, wrapping only if it has to. */
-  children: ReactNode;
+  /** Leading text. Tapping it toggles the row, so the target isn't just the checkbox. */
+  label: string;
+  /** Inline controls (and any trailing text) that follow the label on the same line. */
+  children?: ReactNode;
   /** Set when the data this row needs isn't collected yet: row is locked and annotated. */
   unavailable?: boolean;
   note?: string;
 }
 
-export function FilterRow({ checked, onCheckedChange, children, unavailable, note }: FilterRowProps) {
+export function FilterRow({ checked, onCheckedChange, label, children, unavailable, note }: FilterRowProps) {
+  const on = checked && !unavailable;
+  const toggle = () => {
+    if (!unavailable) onCheckedChange(!checked);
+  };
+
   return (
     <View style={styles.wrapper}>
       <View style={styles.row}>
         <View style={styles.checkbox}>
-          <Checkbox
-            size="sm"
-            checked={checked && !unavailable}
-            disabled={unavailable}
-            onPress={() => onCheckedChange(!checked)}
-          />
+          <Checkbox size="sm" checked={on} disabled={unavailable} onPress={toggle} />
         </View>
-        <View style={[styles.content, (!checked || unavailable) && styles.contentOff]}>{children}</View>
+        <View style={[styles.content, !on && styles.contentOff]}>
+          <Pressable onPress={toggle} disabled={unavailable}>
+            <Text style={styles.label}>{label}</Text>
+          </Pressable>
+          {children}
+        </View>
       </View>
       {note ? <Text style={styles.note}>{note}</Text> : null}
     </View>
@@ -55,6 +62,10 @@ const styles = StyleSheet.create({
   },
   contentOff: {
     opacity: 0.45,
+  },
+  label: {
+    fontSize: 14,
+    color: colors.text,
   },
   note: {
     fontSize: 11,

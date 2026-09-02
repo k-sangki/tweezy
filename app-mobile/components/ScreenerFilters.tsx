@@ -183,8 +183,11 @@ export function ScreenerFilters() {
         indeterminate={groupIndeterminate('valuation')}
         onCheckedChange={(checked) => toggleGroup('valuation', checked)}
       >
-        <FilterRow checked={state.dividend.on} onCheckedChange={(on) => setRow('dividend', on)}>
-          <Text style={styles.rowText}>배당수익률</Text>
+        <FilterRow
+          label="배당수익률"
+          checked={state.dividend.on}
+          onCheckedChange={(on) => setRow('dividend', on)}
+        >
           <Select
             compact
             label="배당수익률"
@@ -202,8 +205,11 @@ export function ScreenerFilters() {
         indeterminate={groupIndeterminate('fundamental')}
         onCheckedChange={(checked) => toggleGroup('fundamental', checked)}
       >
-        <FilterRow checked={state.turnaround.on} onCheckedChange={(on) => setRow('turnaround', on)}>
-          <Text style={styles.rowText}>최근 분기</Text>
+        <FilterRow
+          label="최근 분기"
+          checked={state.turnaround.on}
+          onCheckedChange={(on) => setRow('turnaround', on)}
+        >
           <Select
             compact
             label="최근 분기 흑자전환"
@@ -213,8 +219,11 @@ export function ScreenerFilters() {
           />
           <Text style={styles.rowText}>흑자전환</Text>
         </FilterRow>
-        <FilterRow checked={state.netIncome.on} onCheckedChange={(on) => setRow('netIncome', on)}>
-          <Text style={styles.rowText}>순이익 지속상승</Text>
+        <FilterRow
+          label="순이익 지속상승"
+          checked={state.netIncome.on}
+          onCheckedChange={(on) => setRow('netIncome', on)}
+        >
           <RadioGroup
             compact
             options={PERIOD_OPTIONS}
@@ -230,8 +239,11 @@ export function ScreenerFilters() {
             onChange={(consecutive) => patch('netIncome', { consecutive, on: true })}
           />
         </FilterRow>
-        <FilterRow checked={state.revenue.on} onCheckedChange={(on) => setRow('revenue', on)}>
-          <Text style={styles.rowText}>매출 지속상승</Text>
+        <FilterRow
+          label="매출 지속상승"
+          checked={state.revenue.on}
+          onCheckedChange={(on) => setRow('revenue', on)}
+        >
           <RadioGroup
             compact
             options={PERIOD_OPTIONS}
@@ -260,8 +272,12 @@ export function ScreenerFilters() {
           ['foreign', '외인'],
           ['pension', '연기금'],
         ] as const).map(([key, label]) => (
-          <FilterRow key={key} checked={state[key].on} onCheckedChange={(on) => setRow(key, on)}>
-            <Text style={styles.rowText}>{label} 연속 순매수 최근</Text>
+          <FilterRow
+            key={key}
+            label={`${label} 연속 순매수 최근`}
+            checked={state[key].on}
+            onCheckedChange={(on) => setRow(key, on)}
+          >
             <Select
               compact
               label={`${label} 연속 순매수 거래일`}
@@ -280,8 +296,11 @@ export function ScreenerFilters() {
         indeterminate={groupIndeterminate('short')}
         onCheckedChange={(checked) => toggleGroup('short', checked)}
       >
-        <FilterRow checked={state.shortInterest.on} onCheckedChange={(on) => setRow('shortInterest', on)}>
-          <Text style={styles.rowText}>공매도 잔고 감소</Text>
+        <FilterRow
+          label="공매도 잔고 감소"
+          checked={state.shortInterest.on}
+          onCheckedChange={(on) => setRow('shortInterest', on)}
+        >
           <Select
             compact
             label="며칠 전과 비교할지"
@@ -315,6 +334,7 @@ export function ScreenerFilters() {
           return (
             <FilterRow
               key={preset}
+              label={info.name}
               checked={state.presets.includes(preset)}
               onCheckedChange={() => togglePreset(preset)}
               unavailable={!info.available}
@@ -326,7 +346,6 @@ export function ScreenerFilters() {
                   : '데이터 준비 중 - 기술적 지표 수집 후 활성화됩니다'
               }
             >
-              <Text style={styles.rowText}>{info.name}</Text>
               <Text style={styles.tagline}>{info.tagline}</Text>
               <Pressable onPress={() => setInfoPreset(preset)} hitSlop={8}>
                 <Text style={styles.infoMark}>!</Text>
@@ -341,9 +360,7 @@ export function ScreenerFilters() {
           가격·거래량 히스토리 수집이 붙으면 활성화됩니다.
         </Text>
         {TECHNICAL_PATTERNS.map((pattern) => (
-          <FilterRow key={pattern.key} checked={false} onCheckedChange={() => {}} unavailable>
-            <Text style={styles.rowText}>{pattern.label}</Text>
-          </FilterRow>
+          <FilterRow key={pattern.key} label={pattern.label} checked={false} onCheckedChange={() => {}} unavailable />
         ))}
       </FilterGroup>
 
