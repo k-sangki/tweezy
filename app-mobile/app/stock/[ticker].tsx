@@ -3,7 +3,14 @@ import { useEffect, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { DartClient, DartApiError, type Disclosure } from '@tweezy/core';
 import { colors, radius, spacing } from '../../lib/theme';
+import { sessionChangeLabel } from '../../lib/sessionLabel';
 import { useScreener } from '../../lib/ScreenerContext';
+
+function formatChangePct(changePct: number | null): string {
+  if (changePct == null) return '';
+  const sign = changePct > 0 ? '+' : '';
+  return ` ${sign}${changePct.toFixed(2)}%`;
+}
 
 // EXPO_PUBLIC_* vars are inlined into the client bundle at build time, so
 // this key is not actually secret once the app ships - fine for local dev,
@@ -46,7 +53,7 @@ function useDisclosures(corpCode: string | null | undefined) {
 
 export default function StockDetailScreen() {
   const { ticker } = useLocalSearchParams<{ ticker: string }>();
-  const { stocks } = useScreener();
+  const { stocks, feedDate } = useScreener();
   const stock = stocks.find((item) => item.ticker === ticker);
   const { disclosures, status, errorMessage } = useDisclosures(stock?.corpCode);
 
@@ -65,7 +72,23 @@ export default function StockDetailScreen() {
         <Text style={styles.subtitle}>
           {stock.market} · {stock.ticker}
         </Text>
-        <Text style={styles.price}>{stock.price.toLocaleString('ko-KR')}원</Text>
+        <Text style={styles.price}>
+          {stock.price.toLocaleString('ko-KR')}원
+          <Text
+            style={
+              stock.changePct == null
+                ? styles.changeFlat
+                : stock.changePct > 0
+                  ? styles.changeUp
+                  : stock.changePct < 0
+                    ? styles.changeDown
+                    : styles.changeFlat
+            }
+          >
+            {formatChangePct(stock.changePct)}
+          </Text>
+        </Text>
+        {feedDate ? <Text style={styles.subtitle}>{sessionChangeLabel(feedDate)}</Text> : null}
       </View>
 
       <View style={styles.metricsRow}>
@@ -144,6 +167,21 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
     marginTop: spacing.sm,
+  },
+  changeUp: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#F04452',
+  },
+  changeDown: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.accent,
+  },
+  changeFlat: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textMuted,
   },
   metricsRow: {
     flexDirection: 'row',

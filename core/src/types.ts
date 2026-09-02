@@ -5,6 +5,8 @@ export interface Stock {
   name: string;
   market: Market;
   price: number;
+  /** Regular-session change vs the prior close, percent. See MarketFeedPayload.date for which session this reflects. */
+  changePct: number | null;
   marketCap: number;
   per: number | null;
   pbr: number | null;
@@ -37,16 +39,18 @@ export type ProfitTurnaroundMode = 'qoq' | 'yoy';
 
 export type GrowthPeriodType = 'quarterly' | 'annual';
 
+export type ConsecutiveCount = 1 | 2 | 3 | 4 | 5;
+
 export interface GrowthStreakFilter {
   period: GrowthPeriodType;
   /** Number of consecutive period-over-period increases required. */
-  consecutive: 1 | 2 | 3 | 4;
+  consecutive: ConsecutiveCount;
 }
 
 export interface ShortInterestDropFilter {
   /** Compare today's balance against this many trading days ago. */
-  daysAgo: number;
-  minDropPct: 5 | 10 | 20;
+  daysAgo: 1 | 2 | 3 | 4 | 5;
+  minDropPct: 5 | 10 | 15 | 20;
 }
 
 export interface ScreenerFilter {
@@ -59,7 +63,7 @@ export interface ScreenerFilter {
   profitTurnaround?: ProfitTurnaroundMode;
   netIncomeStreak?: GrowthStreakFilter;
   revenueStreak?: GrowthStreakFilter;
-  /** Net buying (sum > 0) over the last N trading days. Presence of a value = filter active. */
+  /** Net buying every day for the last N consecutive trading days (1-10). Presence of a value = filter active. */
   institutionalNetBuyDays?: number;
   foreignNetBuyDays?: number;
   pensionNetBuyDays?: number;

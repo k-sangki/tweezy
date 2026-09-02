@@ -5,8 +5,14 @@ import type { MarketFeedPayload } from './types';
 export const DEFAULT_MARKET_FEED_URL =
   'https://raw.githubusercontent.com/k-sangki/tweezy/main/data/kr-quotes.json';
 
+export interface MarketSnapshot {
+  /** ISO date (YYYY-MM-DD) of the trading day this snapshot's regular-session prices/changes reflect. */
+  date: string;
+  stocks: Stock[];
+}
+
 export interface MarketDataProvider {
-  getStocks(): Promise<Stock[]>;
+  getSnapshot(): Promise<MarketSnapshot>;
 }
 
 export interface StaticFeedProviderOptions {
@@ -31,12 +37,12 @@ export class StaticFeedMarketDataProvider implements MarketDataProvider {
     this.fetchImpl = options.fetchImpl ?? fetch.bind(globalThis);
   }
 
-  async getStocks(): Promise<Stock[]> {
+  async getSnapshot(): Promise<MarketSnapshot> {
     const response = await this.fetchImpl(this.feedUrl);
     if (!response.ok) {
       throw new Error(`시세 피드를 불러오지 못했습니다: ${response.status}`);
     }
     const payload = (await response.json()) as MarketFeedPayload;
-    return payload.items;
+    return { date: payload.date, stocks: payload.items };
   }
 }

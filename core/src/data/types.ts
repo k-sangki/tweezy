@@ -30,6 +30,8 @@ export interface DisclosureSearchResult {
 }
 
 export interface MarketFeedPayload {
+  /** ISO date (YYYY-MM-DD) of the trading day this snapshot's regular-session prices/changes reflect. */
+  date: string;
   updatedAt: string;
   source: string;
   items: Stock[];

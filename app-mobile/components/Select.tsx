@@ -8,20 +8,23 @@ export interface SelectOption<T> {
 }
 
 export interface SelectProps<T> {
+  /** Sheet title. Shown as the row label too, unless `compact` (then it's sheet-only). */
   label: string;
   options: SelectOption<T>[];
   value: T;
   onChange: (value: T) => void;
+  /** Renders as a small value-only pill (no row label) for packing several controls on one line. */
+  compact?: boolean;
 }
 
-export function Select<T>({ label, options, value, onChange }: SelectProps<T>) {
+export function Select<T>({ label, options, value, onChange, compact }: SelectProps<T>) {
   const [open, setOpen] = useState(false);
   const current = options.find((option) => option.value === value);
 
   return (
     <>
-      <Pressable style={styles.trigger} onPress={() => setOpen(true)}>
-        <Text style={styles.triggerLabel}>{label}</Text>
+      <Pressable style={compact ? styles.triggerCompact : styles.trigger} onPress={() => setOpen(true)}>
+        {compact ? null : <Text style={styles.triggerLabel}>{label}</Text>}
         <View style={styles.triggerValue}>
           <Text style={styles.triggerValueText}>{current?.label ?? '선택'}</Text>
           <Text style={styles.chevron}>⌄</Text>
@@ -64,6 +67,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 14,
+  },
+  triggerCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: radius.pill,
+    backgroundColor: colors.accentSoft,
   },
   triggerLabel: {
     fontSize: 15,

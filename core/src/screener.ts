@@ -33,11 +33,14 @@ function seriesFor(stock: Stock, streak: GrowthStreakFilter, kind: 'netIncome' |
   return streak.period === 'quarterly' ? quarterly : annual;
 }
 
-export function hasNetBuy(series: (number | null)[] | undefined, days: number): boolean {
-  if (!series || days <= 0) return false;
-  const window = series.slice(0, days).filter((value): value is number => value != null);
-  if (window.length === 0) return false;
-  return window.reduce((sum, value) => sum + value, 0) > 0;
+/** True if every one of the last `days` trading days had positive net buying. */
+export function hasConsecutiveNetBuy(series: (number | null)[] | undefined, days: number): boolean {
+  if (!series || days <= 0 || series.length < days) return false;
+  for (let i = 0; i < days; i++) {
+    const value = series[i];
+    if (value == null || value <= 0) return false;
+  }
+  return true;
 }
 
 export function hasShortInterestDrop(
@@ -74,13 +77,13 @@ export function applyFilters(stocks: Stock[], filter: ScreenerFilter): Stock[] {
     if (filter.revenueStreak && !hasIncreasingStreak(seriesFor(stock, filter.revenueStreak, 'revenue'), filter.revenueStreak.consecutive)) {
       return false;
     }
-    if (filter.institutionalNetBuyDays != null && !hasNetBuy(stock.institutionalNetBuy, filter.institutionalNetBuyDays)) {
+    if (filter.institutionalNetBuyDays != null && !hasConsecutiveNetBuy(stock.institutionalNetBuy, filter.institutionalNetBuyDays)) {
       return false;
     }
-    if (filter.foreignNetBuyDays != null && !hasNetBuy(stock.foreignNetBuy, filter.foreignNetBuyDays)) {
+    if (filter.foreignNetBuyDays != null && !hasConsecutiveNetBuy(stock.foreignNetBuy, filter.foreignNetBuyDays)) {
       return false;
     }
-    if (filter.pensionNetBuyDays != null && !hasNetBuy(stock.pensionNetBuy, filter.pensionNetBuyDays)) {
+    if (filter.pensionNetBuyDays != null && !hasConsecutiveNetBuy(stock.pensionNetBuy, filter.pensionNetBuyDays)) {
       return false;
     }
     if (filter.shortInterestDrop && !hasShortInterestDrop(stock.shortInterestBalance, filter.shortInterestDrop)) {

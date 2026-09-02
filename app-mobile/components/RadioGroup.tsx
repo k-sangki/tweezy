@@ -10,19 +10,22 @@ export interface RadioGroupProps<T> {
   options: RadioOption<T>[];
   value: T;
   onChange: (value: T) => void;
+  compact?: boolean;
 }
 
-export function RadioGroup<T>({ options, value, onChange }: RadioGroupProps<T>) {
+export function RadioGroup<T>({ options, value, onChange, compact }: RadioGroupProps<T>) {
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, compact && styles.rowCompact]}>
       {options.map((option, index) => {
         const selected = option.value === value;
         return (
           <Pressable key={index} style={styles.option} onPress={() => onChange(option.value)}>
-            <View style={[styles.circle, selected && styles.circleSelected]}>
-              {selected ? <View style={styles.dot} /> : null}
+            <View style={[styles.circle, compact && styles.circleCompact, selected && styles.circleSelected]}>
+              {selected ? <View style={[styles.dot, compact && styles.dotCompact]} /> : null}
             </View>
-            <Text style={[styles.label, selected && styles.labelSelected]}>{option.label}</Text>
+            <Text style={[styles.label, compact && styles.labelCompact, selected && styles.labelSelected]}>
+              {option.label}
+            </Text>
           </Pressable>
         );
       })}
@@ -36,10 +39,14 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
     paddingVertical: 10,
   },
+  rowCompact: {
+    gap: spacing.sm,
+    paddingVertical: 0,
+  },
   option: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   circle: {
     width: 20,
@@ -51,6 +58,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: colors.surface,
   },
+  circleCompact: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+  },
   circleSelected: {
     borderColor: colors.accent,
   },
@@ -60,9 +72,17 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: colors.accent,
   },
+  dotCompact: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
   label: {
     fontSize: 15,
     color: colors.textMuted,
+  },
+  labelCompact: {
+    fontSize: 13,
   },
   labelSelected: {
     color: colors.text,

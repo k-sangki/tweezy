@@ -147,6 +147,7 @@ def main() -> None:
     kospi = set(stock.get_market_ticker_list(date, market="KOSPI"))
     kosdaq = set(stock.get_market_ticker_list(date, market="KOSDAQ"))
     fundamentals = collect_fundamentals(date)
+    change_pct = first_column(stock.get_market_ohlcv_by_ticker(date, market="ALL"), "등락률", "Change rate").astype(float)
 
     dart_api_key = args.dart_api_key or os.environ.get("DART_API_KEY", "").strip()
     corp_codes: dict[str, str] = {}
@@ -193,11 +194,15 @@ def main() -> None:
         corp_code = corp_codes.get(ticker)
         item_financials = financials.get(corp_code) if corp_code else None
 
+        raw_change = change_pct.get(ticker)
+        change = None if raw_change is None or pd.isna(raw_change) else round(float(raw_change), 2)
+
         item = {
             "ticker": ticker,
             "name": str(stock.get_market_ticker_name(ticker) or ticker),
             "market": market,
             "price": int(round(price)),
+            "changePct": change,
             "marketCap": int(market_cap.get(ticker, 0)),
             "per": per,
             "pbr": pbr,
@@ -213,6 +218,7 @@ def main() -> None:
     items.sort(key=lambda item: -item["marketCap"])
 
     payload = {
+        "date": datetime.strptime(date, "%Y%m%d").strftime("%Y-%m-%d"),
         "updatedAt": f"{datetime.strptime(date, '%Y%m%d').strftime('%Y-%m-%d')} {now.strftime('%H:%M')} KST",
         "source": "KRX adjusted OHLCV/fundamentals via pykrx"
         + (" · OpenDART corp_code" if corp_codes else "")

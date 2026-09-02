@@ -19,7 +19,6 @@ export default function RootLayout() {
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="screener" options={{ title: 'Tweezy 스크리너' }} />
         <Stack.Screen name="stock/[ticker]" options={{ title: '종목 상세' }} />
-        <Stack.Screen name="filters" options={{ title: '필터', presentation: 'modal' }} />
       </Stack>
     </ScreenerProvider>
   );

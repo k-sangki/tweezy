@@ -6,7 +6,22 @@ export interface StockListItemProps {
   onPress?: (stock: Stock) => void;
 }
 
+function formatChangePct(changePct: number | null): string {
+  if (changePct == null) return '-';
+  const sign = changePct > 0 ? '+' : '';
+  return `${sign}${changePct.toFixed(2)}%`;
+}
+
 export function StockListItem({ stock, onPress }: StockListItemProps) {
+  const changeStyle =
+    stock.changePct == null
+      ? styles.changeFlat
+      : stock.changePct > 0
+        ? styles.changeUp
+        : stock.changePct < 0
+          ? styles.changeDown
+          : styles.changeFlat;
+
   return (
     <Pressable
       style={({ pressed }) => [styles.container, pressed && styles.containerPressed]}
@@ -18,7 +33,10 @@ export function StockListItem({ stock, onPress }: StockListItemProps) {
           {stock.market} · {stock.ticker}
         </Text>
       </View>
-      <Text style={styles.price}>{stock.price.toLocaleString('ko-KR')}원</Text>
+      <View style={styles.priceBlock}>
+        <Text style={styles.price}>{stock.price.toLocaleString('ko-KR')}원</Text>
+        <Text style={[styles.change, changeStyle]}>{formatChangePct(stock.changePct)}</Text>
+      </View>
     </Pressable>
   );
 }
@@ -44,9 +62,26 @@ const styles = StyleSheet.create({
     color: '#8B95A1',
     marginTop: 2,
   },
+  priceBlock: {
+    alignItems: 'flex-end',
+  },
   price: {
     fontSize: 16,
     fontWeight: '600',
     color: '#191F28',
+  },
+  change: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  changeUp: {
+    color: '#F04452',
+  },
+  changeDown: {
+    color: '#3182F6',
+  },
+  changeFlat: {
+    color: '#8B95A1',
   },
 });
