@@ -17,6 +17,10 @@ parse DART's corp-code XML itself.
 
 Because this reaches into KRX's internal endpoints (not a documented,
 stable API), run it as a periodic batch job - not from inside the app.
+
+Requires KRX_ID/KRX_PW env vars (a free KRX member login) - pykrx now
+logs in with these before it will serve even basic snapshot data. See
+data-pipeline/README.md.
 """
 
 from __future__ import annotations

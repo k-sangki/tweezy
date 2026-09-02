@@ -37,6 +37,15 @@ you want the file to exist sooner. Set the `DART_API_KEY` repo secret to
 get `corpCode` populated; without it the workflow still runs, just without
 that field.
 
+## Required credentials
+
+As of `pykrx>=1.2.8`, KRX now requires a logged-in session even for the
+snapshot endpoints this script uses - `KRX_ID`/`KRX_PW` (a regular, free
+KRX member login, not a brokerage account) are **required** env vars, or
+`get_market_cap_by_ticker` fails outright. `DART_API_KEY` stays optional
+(only needed for `corpCode`). All three are wired as repo secrets into
+`.github/workflows/update-market-feed.yml`.
+
 ## Usage
 
 Run from the repo root so the default output path lines up with what the
@@ -44,7 +53,7 @@ workflow and `app-mobile` expect:
 
 ```bash
 pip install -r data-pipeline/requirements.txt
-python data-pipeline/collect_quotes.py --output data/kr-quotes.json
+KRX_ID=your_krx_id KRX_PW=your_krx_password python data-pipeline/collect_quotes.py --output data/kr-quotes.json
 ```
 
 Set `DART_API_KEY` (or pass `--dart-api-key`) to also tag each item with its

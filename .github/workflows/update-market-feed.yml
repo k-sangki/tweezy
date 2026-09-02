@@ -24,6 +24,8 @@ jobs:
       - run: python data-pipeline/collect_quotes.py --output data/kr-quotes.json
         env:
           DART_API_KEY: ${{ secrets.DART_API_KEY }}
+          KRX_ID: ${{ secrets.KRX_ID }}
+          KRX_PW: ${{ secrets.KRX_PW }}
 
       - name: Commit updated feed
         run: |
