@@ -120,7 +120,6 @@ def main() -> None:
 
     kospi = set(stock.get_market_ticker_list(date, market="KOSPI"))
     kosdaq = set(stock.get_market_ticker_list(date, market="KOSDAQ"))
-    names = stock.get_market_ticker_and_name(date, market="ALL")
     fundamentals = collect_fundamentals(date)
 
     dart_api_key = args.dart_api_key or os.environ.get("DART_API_KEY", "").strip()
@@ -149,7 +148,7 @@ def main() -> None:
         items.append(
             {
                 "ticker": ticker,
-                "name": str(names.get(ticker, ticker)),
+                "name": str(stock.get_market_ticker_name(ticker) or ticker),
                 "market": market,
                 "price": int(round(price)),
                 "marketCap": int(market_cap.get(ticker, 0)),
