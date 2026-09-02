@@ -1,0 +1,40 @@
+import type { Stock } from '../types';
+import type { MarketFeedPayload } from './types';
+
+/** Published by .github/workflows/update-market-feed.yml on every collector run. */
+export const DEFAULT_MARKET_FEED_URL =
+  'https://raw.githubusercontent.com/k-sangki/tweezy/main/data/kr-quotes.json';
+
+export interface MarketDataProvider {
+  getStocks(): Promise<Stock[]>;
+}
+
+export interface StaticFeedProviderOptions {
+  /** URL of a JSON payload shaped like MarketFeedPayload, published by a periodic collector job. */
+  feedUrl: string;
+  fetchImpl?: typeof fetch;
+}
+
+/**
+ * Reads a periodically-refreshed quote snapshot from a static JSON feed,
+ * rather than calling KRX directly from the client. See data-pipeline/
+ * for the collector job that produces this feed.
+ */
+export class StaticFeedMarketDataProvider implements MarketDataProvider {
+  private readonly feedUrl: string;
+  private readonly fetchImpl: typeof fetch;
+
+  constructor(options: StaticFeedProviderOptions) {
+    this.feedUrl = options.feedUrl;
+    this.fetchImpl = options.fetchImpl ?? fetch;
+  }
+
+  async getStocks(): Promise<Stock[]> {
+    const response = await this.fetchImpl(this.feedUrl);
+    if (!response.ok) {
+      throw new Error(`시세 피드를 불러오지 못했습니다: ${response.status}`);
+    }
+    const payload = (await response.json()) as MarketFeedPayload;
+    return payload.items;
+  }
+}

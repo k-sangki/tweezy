@@ -1,0 +1,16 @@
+{
+  "name": "tweezy",
+  "private": true,
+  "workspaces": [
+    "core",
+    "ui",
+    "app-mobile"
+  ],
+  "scripts": {
+    "start": "npm run start --workspace app-mobile",
+    "android": "npm run android --workspace app-mobile",
+    "ios": "npm run ios --workspace app-mobile",
+    "web": "npm run web --workspace app-mobile",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  }
+}
