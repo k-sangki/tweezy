@@ -33,6 +33,7 @@ import io
 import json
 import logging
 import os
+import time
 import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -91,16 +92,25 @@ def market_of(ticker: str, kospi: set[str], kosdaq: set[str]) -> str | None:
     return None
 
 
-def download_corp_codes(api_key: str, timeout: int = 40) -> dict[str, str]:
+def download_corp_codes(api_key: str, timeout: int = 40, retries: int = 3) -> dict[str, str]:
     """stock ticker -> OpenDART corp_code, via https://opendart.fss.or.kr/api/corpCode.xml"""
     import requests
 
-    response = requests.get(
-        "https://opendart.fss.or.kr/api/corpCode.xml",
-        params={"crtfc_key": api_key},
-        timeout=timeout,
-    )
-    response.raise_for_status()
+    response = None
+    for attempt in range(retries):
+        try:
+            response = requests.get(
+                "https://opendart.fss.or.kr/api/corpCode.xml",
+                params={"crtfc_key": api_key},
+                timeout=timeout,
+            )
+            response.raise_for_status()
+            break
+        except requests.RequestException as error:
+            if attempt == retries - 1:
+                raise
+            LOGGER.warning("corpCode.xml 요청 실패 (%s/%s), 재시도: %s", attempt + 1, retries, error)
+            time.sleep(5.0 * (attempt + 1))
     with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
         xml = archive.read(archive.namelist()[0])
     root = ElementTree.fromstring(xml)
