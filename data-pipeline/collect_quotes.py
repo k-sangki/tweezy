@@ -92,8 +92,37 @@ def market_of(ticker: str, kospi: set[str], kosdaq: set[str]) -> str | None:
     return None
 
 
+def load_corp_codes_cache(path: Path) -> dict[str, str]:
+    """corp_code identifiers are stable, so a plain cache with no TTL is enough -
+    it keeps cached financials usable on days when DART's quota is already spent."""
+    if not path.exists():
+        return {}
+    try:
+        cached = json.loads(path.read_text(encoding="utf-8"))
+        return cached if isinstance(cached, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def save_corp_codes_cache(path: Path, corp_codes: dict[str, str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(corp_codes, separators=(",", ":")), encoding="utf-8")
+
+
+def _dart_error_status(content: bytes) -> str | None:
+    """Pull <status> out of an OpenDART XML error body, if that's what this is."""
+    try:
+        return ElementTree.fromstring(content).findtext("status")
+    except ElementTree.ParseError:
+        return None
+
+
 def download_corp_codes(api_key: str, timeout: int = 40, retries: int = 3) -> dict[str, str]:
-    """stock ticker -> OpenDART corp_code, via https://opendart.fss.or.kr/api/corpCode.xml"""
+    """stock ticker -> OpenDART corp_code, via https://opendart.fss.or.kr/api/corpCode.xml
+
+    Raises DailyLimitReached when the API key's daily quota is spent, so the
+    caller can publish the feed without DART-derived fields instead of failing.
+    """
     import requests
 
     response = None
@@ -111,8 +140,16 @@ def download_corp_codes(api_key: str, timeout: int = 40, retries: int = 3) -> di
                 raise
             LOGGER.warning("corpCode.xml 요청 실패 (%s/%s), 재시도: %s", attempt + 1, retries, error)
             time.sleep(5.0 * (attempt + 1))
-    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
-        xml = archive.read(archive.namelist()[0])
+    try:
+        with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+            xml = archive.read(archive.namelist()[0])
+    except zipfile.BadZipFile:
+        # A spent daily quota (or another API-level error) comes back as an XML
+        # error body with HTTP 200, not a zip.
+        status = _dart_error_status(response.content)
+        if status == "020":
+            raise dart_financials.DailyLimitReached("OpenDART 일일 요청 한도를 초과했습니다.") from None
+        raise RuntimeError(f"corpCode.xml 응답을 읽지 못했습니다 (status={status})") from None
     root = ElementTree.fromstring(xml)
 
     stock_map: dict[str, str] = {}
@@ -152,17 +189,37 @@ def main() -> None:
     dart_api_key = args.dart_api_key or os.environ.get("DART_API_KEY", "").strip()
     corp_codes: dict[str, str] = {}
     financials: dict[str, dict[str, list[float | None]]] = {}
+    quota_spent = False
     if dart_api_key:
+        corp_codes_cache_path = Path(args.financials_cache).with_name("dart_corp_codes.json")
         LOGGER.info("OpenDART corp_code 매핑 다운로드 중")
-        corp_codes = download_corp_codes(dart_api_key)
+        try:
+            corp_codes = download_corp_codes(dart_api_key)
+            save_corp_codes_cache(corp_codes_cache_path, corp_codes)
+        except dart_financials.DailyLimitReached:
+            quota_spent = True
+            # Quota already spent today: fall back to the cached mapping so
+            # previously collected financials still make it into the feed, and
+            # publish fresh 시세/수급 data rather than failing the whole run.
+            corp_codes = load_corp_codes_cache(corp_codes_cache_path)
+            LOGGER.warning(
+                "OpenDART 일일 한도 소진 - 캐시된 corp_code %s개로 진행하고 신규 재무 수집은 건너뜁니다.",
+                len(corp_codes),
+            )
 
-        if not args.skip_financials:
+        if corp_codes and not args.skip_financials:
             financials_cache_path = Path(args.financials_cache)
             financials = dart_financials.load_cache(financials_cache_path, now) or {}
             corp_codes_needing_financials = [
                 code for ticker, code in corp_codes.items() if ticker in market_cap.index and code not in financials
             ]
-            if corp_codes_needing_financials:
+            if corp_codes_needing_financials and quota_spent:
+                LOGGER.info(
+                    "한도 소진 상태이므로 신규 재무 수집은 건너뜁니다 (캐시 %s개 사용, %s개 미수집).",
+                    len(financials),
+                    len(corp_codes_needing_financials),
+                )
+            elif corp_codes_needing_financials:
                 LOGGER.info("OpenDART 재무제표(순이익/매출) 수집 시작: %s개 기업", len(corp_codes_needing_financials))
                 cached_before = dict(financials)
 

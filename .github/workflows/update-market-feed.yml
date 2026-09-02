@@ -23,7 +23,10 @@ jobs:
         with:
           # collect_quotes.py runs with the repo root as cwd, so its default
           # --financials-cache path (.cache/dart_financials.json) resolves here.
-          path: .cache/dart_financials.json
+          # The whole dir is cached so the corp_code map survives too - without
+          # it, cached financials can't be matched back to tickers on a day when
+          # DART's quota is already spent.
+          path: .cache
           key: dart-financials-${{ github.run_id }}
           restore-keys: |
             dart-financials-
