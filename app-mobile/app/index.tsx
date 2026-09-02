@@ -6,14 +6,17 @@ import { useScreener } from '../lib/ScreenerContext';
 
 export default function ScreenerListScreen() {
   const router = useRouter();
-  const { filteredStocks } = useScreener();
+  const { filteredStocks, isLiveData, isLoading } = useScreener();
 
   const openStock = (stock: Stock) => router.push(`/stock/${stock.ticker}`);
 
   return (
     <View style={styles.container}>
       <View style={styles.toolbar}>
-        <Text style={styles.count}>{filteredStocks.length}개 종목</Text>
+        <Text style={styles.count}>
+          {filteredStocks.length}개 종목
+          {isLoading ? ' · 불러오는 중' : !isLiveData ? ' · 샘플 데이터' : ''}
+        </Text>
         <Pressable onPress={() => router.push('/filters')} hitSlop={8}>
           <Text style={styles.filterLink}>필터</Text>
         </Pressable>
