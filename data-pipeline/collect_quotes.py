@@ -20,7 +20,10 @@ stable API), run it as a periodic batch job - not from inside the app.
 
 Requires KRX_ID/KRX_PW env vars (a free KRX member login) - pykrx now
 logs in with these before it will serve even basic snapshot data. See
-data-pipeline/README.md.
+data-pipeline/README.md. A local `.env` file (repo root or here) is
+picked up automatically via python-dotenv - never commit it, it's
+gitignored already. Use --limit for a quick local test against a
+handful of tickers instead of the full ~2,700.
 """
 
 from __future__ import annotations
@@ -38,9 +41,12 @@ from xml.etree import ElementTree
 from zoneinfo import ZoneInfo
 
 import pandas as pd
+from dotenv import load_dotenv
 from pykrx import stock
 
 import dart_financials
+
+load_dotenv()  # picks up KRX_ID/KRX_PW/DART_API_KEY from a local .env, if present - never committed (see .gitignore)
 
 SEOUL = ZoneInfo("Asia/Seoul")
 MIN_CLOSE = 100
@@ -53,6 +59,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dart-api-key", default=None, help="defaults to $DART_API_KEY")
     parser.add_argument("--financials-cache", default=".cache/dart_financials.json")
     parser.add_argument("--skip-financials", action="store_true", help="skip quarterly/annual profit+revenue collection")
+    parser.add_argument("--limit", type=int, default=None, help="only process the first N eligible tickers (for quick local testing)")
     return parser.parse_args()
 
 
@@ -119,6 +126,8 @@ def main() -> None:
     now = datetime.now(SEOUL)
 
     date, cap_frame = latest_snapshot(now)
+    if args.limit is not None:
+        cap_frame = cap_frame.head(args.limit)
     close = first_column(cap_frame, "종가", "Close").astype(float)
     market_cap = first_column(cap_frame, "시가총액", "Market Cap").astype(float)
 

@@ -49,12 +49,25 @@ KRX member login, not a brokerage account) are **required** env vars, or
 ## Usage
 
 Run from the repo root so the default output path lines up with what the
-workflow and `app-mobile` expect:
+workflow and `app-mobile` expect. Either export the three env vars inline,
+or copy `.env.example` (repo root) to `.env` and fill in real values -
+`collect_quotes.py` loads it automatically via python-dotenv, and `.env`
+is gitignored so it's never committed:
 
 ```bash
 pip install -r data-pipeline/requirements.txt
-KRX_ID=your_krx_id KRX_PW=your_krx_password python data-pipeline/collect_quotes.py --output data/kr-quotes.json
+
+# option A: inline env vars
+KRX_ID=your_krx_id KRX_PW=your_krx_password DART_API_KEY=your_dart_key \
+  python data-pipeline/collect_quotes.py --output data/kr-quotes.json
+
+# option B: .env file (cp .env.example .env, fill it in, then just)
+python data-pipeline/collect_quotes.py --output data/kr-quotes.json
 ```
+
+For a quick local test instead of the full ~2,700 tickers, add
+`--limit 20` (and `--skip-financials` too if you just want the quote
+snapshot, since financials are the slow part).
 
 Set `DART_API_KEY` (or pass `--dart-api-key`) to also tag each item with its
 OpenDART `corp_code`, so the app can query disclosures for a stock via
