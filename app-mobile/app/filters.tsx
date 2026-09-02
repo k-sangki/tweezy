@@ -7,6 +7,7 @@ import type {
   Market,
   ProfitTurnaroundMode,
   ScreenerFilter,
+  ShortInterestDropFilter,
 } from '@tweezy/core';
 import { ChipSelect } from '../components/ChipSelect';
 import { FilterGroup } from '../components/FilterGroup';
@@ -33,6 +34,13 @@ const CONSECUTIVE_OPTIONS: { label: string; value: 0 | 1 | 2 | 3 | 4 }[] = [
   { label: '4', value: 4 },
 ];
 
+const DROP_PCT_OPTIONS: { label: string; value: 5 | 10 | 20 | undefined }[] = [
+  { label: '미사용', value: undefined },
+  { label: '5% 이상', value: 5 },
+  { label: '10% 이상', value: 10 },
+  { label: '20% 이상', value: 20 },
+];
+
 function toInputText(value: number | undefined): string {
   return value == null ? '' : String(value);
 }
@@ -46,6 +54,14 @@ function parseInputNumber(text: string): number | undefined {
 
 function toStreakFilter(period: GrowthPeriodType, consecutive: 0 | 1 | 2 | 3 | 4): GrowthStreakFilter | undefined {
   return consecutive === 0 ? undefined : { period, consecutive };
+}
+
+function toShortInterestDropFilter(
+  daysAgoText: string,
+  minDropPct: 5 | 10 | 20 | undefined,
+): ShortInterestDropFilter | undefined {
+  const daysAgo = parseInputNumber(daysAgoText);
+  return daysAgo == null || minDropPct == null ? undefined : { daysAgo, minDropPct };
 }
 
 export default function FiltersScreen() {
@@ -68,6 +84,15 @@ export default function FiltersScreen() {
   const [revenueConsecutive, setRevenueConsecutive] = useState<0 | 1 | 2 | 3 | 4>(
     filter.revenueStreak?.consecutive ?? 0,
   );
+  const [institutionalDaysText, setInstitutionalDaysText] = useState(
+    toInputText(filter.institutionalNetBuyDays),
+  );
+  const [foreignDaysText, setForeignDaysText] = useState(toInputText(filter.foreignNetBuyDays));
+  const [pensionDaysText, setPensionDaysText] = useState(toInputText(filter.pensionNetBuyDays));
+  const [shortDaysAgoText, setShortDaysAgoText] = useState(
+    toInputText(filter.shortInterestDrop?.daysAgo),
+  );
+  const [shortMinDropPct, setShortMinDropPct] = useState(filter.shortInterestDrop?.minDropPct);
 
   const toggleMarket = (market: Market) => {
     setMarkets((current) =>
@@ -82,6 +107,10 @@ export default function FiltersScreen() {
       profitTurnaround,
       netIncomeStreak: toStreakFilter(netIncomePeriod, netIncomeConsecutive),
       revenueStreak: toStreakFilter(revenuePeriod, revenueConsecutive),
+      institutionalNetBuyDays: parseInputNumber(institutionalDaysText),
+      foreignNetBuyDays: parseInputNumber(foreignDaysText),
+      pensionNetBuyDays: parseInputNumber(pensionDaysText),
+      shortInterestDrop: toShortInterestDropFilter(shortDaysAgoText, shortMinDropPct),
     };
     setFilter(next);
     router.back();
@@ -95,6 +124,11 @@ export default function FiltersScreen() {
     setNetIncomeConsecutive(0);
     setRevenuePeriod('quarterly');
     setRevenueConsecutive(0);
+    setInstitutionalDaysText('');
+    setForeignDaysText('');
+    setPensionDaysText('');
+    setShortDaysAgoText('');
+    setShortMinDropPct(undefined);
     setFilter({});
   };
 
@@ -142,6 +176,48 @@ export default function FiltersScreen() {
           <ChipSelect options={PERIOD_OPTIONS} value={revenuePeriod} onChange={setRevenuePeriod} />
           <View style={styles.spacer} />
           <ChipSelect options={CONSECUTIVE_OPTIONS} value={revenueConsecutive} onChange={setRevenueConsecutive} />
+        </FilterGroup>
+
+        <FilterGroup title="수급">
+          <Text style={styles.label}>기관 순매수 (최근 N거래일, 순매수 합 &gt; 0)</Text>
+          <TextInput
+            style={styles.input}
+            keyboardType="numeric"
+            placeholder="예: 20"
+            value={institutionalDaysText}
+            onChangeText={setInstitutionalDaysText}
+          />
+
+          <Text style={[styles.label, styles.labelSpaced]}>외인 순매수 (최근 N거래일)</Text>
+          <TextInput
+            style={styles.input}
+            keyboardType="numeric"
+            placeholder="예: 20"
+            value={foreignDaysText}
+            onChangeText={setForeignDaysText}
+          />
+
+          <Text style={[styles.label, styles.labelSpaced]}>연기금 순매수 (최근 N거래일)</Text>
+          <TextInput
+            style={styles.input}
+            keyboardType="numeric"
+            placeholder="예: 20"
+            value={pensionDaysText}
+            onChangeText={setPensionDaysText}
+          />
+        </FilterGroup>
+
+        <FilterGroup title="공매도">
+          <Text style={styles.label}>공매도 잔고 급감 - N거래일 전 대비</Text>
+          <TextInput
+            style={styles.input}
+            keyboardType="numeric"
+            placeholder="예: 20"
+            value={shortDaysAgoText}
+            onChangeText={setShortDaysAgoText}
+          />
+          <View style={styles.spacer} />
+          <ChipSelect options={DROP_PCT_OPTIONS} value={shortMinDropPct} onChange={setShortMinDropPct} />
         </FilterGroup>
       </ScrollView>
 

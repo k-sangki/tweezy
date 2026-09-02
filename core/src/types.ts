@@ -22,6 +22,14 @@ export interface Stock {
   quarterlyRevenue?: (number | null)[];
   annualNetIncome?: (number | null)[];
   annualRevenue?: (number | null)[];
+  /**
+   * Daily net-buy volume by investor type and daily short-interest
+   * balance (shares), most recent trading day first, up to ~60 days.
+   */
+  institutionalNetBuy?: (number | null)[];
+  foreignNetBuy?: (number | null)[];
+  pensionNetBuy?: (number | null)[];
+  shortInterestBalance?: (number | null)[];
 }
 
 /** 'qoq' = 직전 분기 대비 흑자전환, 'yoy' = 전년 동기 대비 흑자전환 */
@@ -35,6 +43,12 @@ export interface GrowthStreakFilter {
   consecutive: 1 | 2 | 3 | 4;
 }
 
+export interface ShortInterestDropFilter {
+  /** Compare today's balance against this many trading days ago. */
+  daysAgo: number;
+  minDropPct: 5 | 10 | 20;
+}
+
 export interface ScreenerFilter {
   markets?: Market[];
   minMarketCap?: number;
@@ -45,4 +59,9 @@ export interface ScreenerFilter {
   profitTurnaround?: ProfitTurnaroundMode;
   netIncomeStreak?: GrowthStreakFilter;
   revenueStreak?: GrowthStreakFilter;
+  /** Net buying (sum > 0) over the last N trading days. Presence of a value = filter active. */
+  institutionalNetBuyDays?: number;
+  foreignNetBuyDays?: number;
+  pensionNetBuyDays?: number;
+  shortInterestDrop?: ShortInterestDropFilter;
 }

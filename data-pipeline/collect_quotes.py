@@ -45,6 +45,7 @@ from dotenv import load_dotenv
 from pykrx import stock
 
 import dart_financials
+import market_flow
 
 load_dotenv()  # picks up KRX_ID/KRX_PW/DART_API_KEY from a local .env, if present - never committed (see .gitignore)
 
@@ -59,6 +60,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dart-api-key", default=None, help="defaults to $DART_API_KEY")
     parser.add_argument("--financials-cache", default=".cache/dart_financials.json")
     parser.add_argument("--skip-financials", action="store_true", help="skip quarterly/annual profit+revenue collection")
+    parser.add_argument("--skip-flow", action="store_true", help="skip 수급/공매도 daily history collection")
+    parser.add_argument("--flow-days", type=int, default=60, help="trading days of 수급/공매도 history to collect")
     parser.add_argument("--limit", type=int, default=None, help="only process the first N eligible tickers (for quick local testing)")
     return parser.parse_args()
 
@@ -157,6 +160,11 @@ def main() -> None:
     else:
         LOGGER.warning("DART_API_KEY가 없어 corpCode 매핑 및 재무제표 수집을 건너뜁니다.")
 
+    flow_and_short: dict[str, dict[str, list[float | None]]] = {}
+    if not args.skip_flow:
+        LOGGER.info("수급/공매도 이력 수집 시작 (최근 %s거래일)", args.flow_days)
+        flow_and_short = market_flow.collect_flow_and_short_interest(date, days=args.flow_days)
+
     items: list[dict[str, Any]] = []
     for raw_ticker in cap_frame.index:
         ticker = str(raw_ticker)
@@ -188,6 +196,8 @@ def main() -> None:
         }
         if item_financials:
             item.update(item_financials)
+        if ticker in flow_and_short:
+            item.update(flow_and_short[ticker])
         items.append(item)
 
     items.sort(key=lambda item: -item["marketCap"])
@@ -196,7 +206,8 @@ def main() -> None:
         "updatedAt": f"{datetime.strptime(date, '%Y%m%d').strftime('%Y-%m-%d')} {now.strftime('%H:%M')} KST",
         "source": "KRX adjusted OHLCV/fundamentals via pykrx"
         + (" · OpenDART corp_code" if corp_codes else "")
-        + (" · OpenDART financials" if financials else ""),
+        + (" · OpenDART financials" if financials else "")
+        + (" · KRX flow/short-interest" if flow_and_short else ""),
         "items": items,
     }
 

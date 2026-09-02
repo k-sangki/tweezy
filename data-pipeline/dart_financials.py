@@ -8,19 +8,26 @@ variants (연결/별도, account_id vs account_nm). This module only needs
 two of its account kinds ("revenue", "profit"), not the full financial
 metrics rs-screener computes.
 
-Field semantics below are confirmed from OpenDART's own guide
-(https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS003&apiId=2019020),
-not assumed:
-- For a quarterly report (Q1=11013, Q3=11014) or the half-year report
-  (11012), `thstrm_amount` on an income-statement account is the
-  STANDALONE 3-month period, not year-to-date. `thstrm_add_amount` is
-  the year-to-date cumulative for that same report.
-- The annual report (11011) has no 3-month breakdown, so a standalone
-  Q4 is derived as annual.thstrm_amount - Q3(same year).thstrm_add_amount
-  (9-month cumulative).
-- An annual report's thstrm/frmtrm/bfefrmtrm amounts are 3 consecutive
-  fiscal years in one call, so 2 annual calls 2 years apart cover 5
-  years with one year of overlap.
+Field semantics: OpenDART's own guide says thstrm_amount on a quarterly/
+half-year report's income-statement account is a "[3-month]" standalone
+figure, not year-to-date; thstrm_add_amount is the year-to-date
+cumulative. Verified against real Samsung Electronics filings (both
+FY2025 and FY2026, revenue and net income) by checking the arithmetic
+identity Q1 + Q2(thstrm) = Half's thstrm_add_amount, and
+Q1+Q2+Q3 = Q3's thstrm_add_amount, and all 4 quarters summing to the
+annual total - matched exactly across the board, including for the
+half-year (11012) report despite its account label saying "반기순이익"
+(half-year profit), which turned out to just be inherited XBRL taxonomy
+boilerplate, not a semantic description of thstrm_amount for that
+report. (An earlier version of this module wrongly "corrected" Q2 by
+subtracting Q1 from the half-year thstrm_amount, based on a magnitude
+gut-check rather than this identity check - that was the actual bug.)
+So: Q1/Q2/Q3 standalone = that report's thstrm_amount, directly. Q4
+standalone = Annual report's thstrm_amount minus Q3 report's
+thstrm_add_amount (9-month cumulative, same year). An annual report's
+thstrm/frmtrm/bfefrmtrm amounts are 3 consecutive fiscal years in one
+call, so 2 annual calls 2 years apart cover 5 years with one year of
+overlap.
 """
 
 from __future__ import annotations
@@ -156,12 +163,15 @@ class DartFinancialsClient:
         self._report_cache[cache_key] = rows
         return rows
 
+    def _report_thstrm_amount(self, corp_code: str, year: int, report_code: str, kind: str) -> float | None:
+        rows = self._request_statement(corp_code, year, report_code)
+        account = find_account(rows, kind)
+        return parse_amount(account.get("thstrm_amount")) if account else None
+
     def _standalone_quarter_amount(self, corp_code: str, year: int, quarter: int, kind: str) -> float | None:
         if quarter in (1, 2, 3):
             report_code = {1: REPORT_Q1, 2: REPORT_HALF, 3: REPORT_Q3}[quarter]
-            rows = self._request_statement(corp_code, year, report_code)
-            account = find_account(rows, kind)
-            return parse_amount(account.get("thstrm_amount")) if account else None
+            return self._report_thstrm_amount(corp_code, year, report_code, kind)
 
         # quarter == 4: annual thstrm_amount (full year) minus Q3 thstrm_add_amount (9-month cumulative)
         annual_rows = self._request_statement(corp_code, year, REPORT_ANNUAL)

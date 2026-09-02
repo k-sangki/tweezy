@@ -1,4 +1,4 @@
-import type { GrowthStreakFilter, ProfitTurnaroundMode, ScreenerFilter, Stock } from './types';
+import type { GrowthStreakFilter, ProfitTurnaroundMode, ScreenerFilter, ShortInterestDropFilter, Stock } from './types';
 
 /** 'yoy' compares against the same quarter one year ago (index 4 in a most-recent-first quarterly series). */
 const YOY_QUARTER_OFFSET = 4;
@@ -33,6 +33,25 @@ function seriesFor(stock: Stock, streak: GrowthStreakFilter, kind: 'netIncome' |
   return streak.period === 'quarterly' ? quarterly : annual;
 }
 
+export function hasNetBuy(series: (number | null)[] | undefined, days: number): boolean {
+  if (!series || days <= 0) return false;
+  const window = series.slice(0, days).filter((value): value is number => value != null);
+  if (window.length === 0) return false;
+  return window.reduce((sum, value) => sum + value, 0) > 0;
+}
+
+export function hasShortInterestDrop(
+  series: (number | null)[] | undefined,
+  { daysAgo, minDropPct }: ShortInterestDropFilter,
+): boolean {
+  if (!series) return false;
+  const current = series[0];
+  const past = series[daysAgo];
+  if (current == null || past == null || past <= 0) return false;
+  const dropPct = (1 - current / past) * 100;
+  return dropPct >= minDropPct;
+}
+
 export function applyFilters(stocks: Stock[], filter: ScreenerFilter): Stock[] {
   return stocks.filter((stock) => {
     if (filter.markets && !filter.markets.includes(stock.market)) return false;
@@ -53,6 +72,18 @@ export function applyFilters(stocks: Stock[], filter: ScreenerFilter): Stock[] {
       return false;
     }
     if (filter.revenueStreak && !hasIncreasingStreak(seriesFor(stock, filter.revenueStreak, 'revenue'), filter.revenueStreak.consecutive)) {
+      return false;
+    }
+    if (filter.institutionalNetBuyDays != null && !hasNetBuy(stock.institutionalNetBuy, filter.institutionalNetBuyDays)) {
+      return false;
+    }
+    if (filter.foreignNetBuyDays != null && !hasNetBuy(stock.foreignNetBuy, filter.foreignNetBuyDays)) {
+      return false;
+    }
+    if (filter.pensionNetBuyDays != null && !hasNetBuy(stock.pensionNetBuy, filter.pensionNetBuyDays)) {
+      return false;
+    }
+    if (filter.shortInterestDrop && !hasShortInterestDrop(stock.shortInterestBalance, filter.shortInterestDrop)) {
       return false;
     }
     return true;
