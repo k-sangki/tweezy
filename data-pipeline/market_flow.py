@@ -72,9 +72,17 @@ def _net_buy_column(frame: pd.DataFrame) -> pd.Series | None:
 
 
 def collect_net_buy_history(trading_days: list[str], field_key: str, investor: str) -> dict[str, list[float | None]]:
-    """ticker -> daily net-buy volume, most recent trading day first."""
+    """ticker -> daily net-buy volume, most recent trading day first.
+
+    Values are written at the index of their trading day, never appended: a
+    ticker that is missing on some day (halted, newly listed) - or a whole day
+    whose fetch failed - leaves a null in place rather than shifting every
+    older value up a slot. Without this, index i stops meaning "i trading days
+    ago" and every filter that compares positions silently reads wrong dates.
+    """
+    days_newest_first = list(reversed(trading_days))
     by_ticker: dict[str, list[float | None]] = {}
-    for day in reversed(trading_days):  # newest first, matches our most-recent-first arrays
+    for index, day in enumerate(days_newest_first):
         for market in MARKETS:
             try:
                 frame = _throttled_call(
@@ -87,7 +95,8 @@ def collect_net_buy_history(trading_days: list[str], field_key: str, investor: s
             if column is None:
                 continue
             for ticker, value in column.items():
-                by_ticker.setdefault(str(ticker), []).append(float(value))
+                series = by_ticker.setdefault(str(ticker), [None] * len(days_newest_first))
+                series[index] = float(value)
     return by_ticker
 
 
@@ -120,9 +129,10 @@ def collect_short_interest_history(date: str, days: int) -> tuple[dict[str, list
         LOGGER.info("공매도잔고 지연 공시 감지 - 기준일을 %s -> %s로 조정", date, anchor)
 
     trading_days = recent_trading_days(anchor, days)
+    days_newest_first = list(reversed(trading_days))
     by_ticker: dict[str, list[float | None]] = {}
     latest_ratio: dict[str, float] = {}
-    for index, day in enumerate(reversed(trading_days)):
+    for index, day in enumerate(days_newest_first):
         for market in MARKETS:
             try:
                 frame = _throttled_call(stock.get_shorting_balance_by_ticker, day, market=market)
@@ -131,8 +141,10 @@ def collect_short_interest_history(date: str, days: int) -> tuple[dict[str, list
                 continue
             if frame is None or frame.empty or "공매도잔고" not in frame.columns:
                 continue
+            # Written by index, not appended - see collect_net_buy_history.
             for ticker, value in frame["공매도잔고"].items():
-                by_ticker.setdefault(str(ticker), []).append(float(value))
+                series = by_ticker.setdefault(str(ticker), [None] * len(days_newest_first))
+                series[index] = float(value)
             if index == 0 and "비중" in frame.columns:
                 for ticker, value in frame["비중"].items():
                     latest_ratio[str(ticker)] = round(float(value), 3)

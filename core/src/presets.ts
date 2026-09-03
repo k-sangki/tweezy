@@ -163,13 +163,17 @@ function matchesOneil(stock: Stock): boolean {
   const quarterGrowth = yoyGrowthPct(stock.quarterlyNetIncome);
   if (quarterGrowth == null || quarterGrowth < 25) return false;
 
+  // A: "3개년 모두 전년대비 증가" means three year-over-year increases, which
+  // needs four fiscal years - comparing three years only tests two of them.
   const annual = stock.annualNetIncome;
-  if (!annual || annual.length < 3) return false;
-  const [year0, year1, year2] = annual;
-  if (year0 == null || year1 == null || year2 == null) return false;
-  if (!(year0 > year1 && year1 > year2)) return false;
-  if (year1 <= 0 || year2 <= 0) return false;
-  const averageGrowth = ((year0 / year1 - 1) * 100 + (year1 / year2 - 1) * 100) / 2;
+  if (!annual || annual.length < 4) return false;
+  const years = annual.slice(0, 4);
+  if (years.some((value) => value == null)) return false;
+  const [year0, year1, year2, year3] = years as number[];
+  if (!(year0 > year1 && year1 > year2 && year2 > year3)) return false;
+  if (year1 <= 0 || year2 <= 0 || year3 <= 0) return false;
+  const averageGrowth =
+    ((year0 / year1 - 1) * 100 + (year1 / year2 - 1) * 100 + (year2 / year3 - 1) * 100) / 3;
   if (averageGrowth < 25) return false;
 
   const flow = stock.institutionalNetBuy;

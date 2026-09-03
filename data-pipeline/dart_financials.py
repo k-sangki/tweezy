@@ -83,6 +83,11 @@ CONSECUTIVE_FAILURE_LIMIT = 30
 
 KINDS = ("revenue", "profit", "operating_profit")
 
+# Quarters and fiscal years per series. The screener's deepest streak filter is
+# "연속 5회 상승", and N consecutive increases need N+1 data points - with 5 the
+# option could never match anything.
+SERIES_LENGTH = 6
+
 # (account_id fragments, account_nm fragments, statement divisions) for the
 # single-company API, which exposes the full IFRS taxonomy.
 ACCOUNT_DEFINITIONS: dict[str, tuple[tuple[str, ...], tuple[str, ...], set[str]]] = {
@@ -252,38 +257,40 @@ def _quarter_recipes(year: int, quarter: int) -> list[Recipe]:
 
 
 def plan(year: int, quarter: int) -> tuple[list[ReportRef], dict[tuple[int, int], Recipe], list[ReportRef]]:
-    """(reports to fetch, recipe per quarter, the two annual reports).
+    """(reports to fetch, recipe per quarter, the three annual reports).
 
-    Quarters are planned newest-first with their primary recipe; the oldest is
-    then satisfied from reports already in the set when possible.
+    Quarters are walked newest-first. Each one first tries to be satisfied
+    entirely from reports already in the set - the comparative columns of a
+    newer report often cover an older quarter - and only falls back to its own
+    report when nothing already fetched can produce it. That greedy pass is
+    what keeps SERIES_LENGTH=6 quarters down to the same handful of reports
+    that 5 used to need.
     """
-    quarters = _last_n_quarters(year, quarter, 5)
+    quarters = _last_n_quarters(year, quarter, SERIES_LENGTH)
     reports: set[ReportRef] = set()
     recipes: dict[tuple[int, int], Recipe] = {}
 
-    for period in quarters[:-1]:
-        recipe = _quarter_recipes(*period)[0]
+    for period in quarters:
+        candidates = _quarter_recipes(*period)
+        satisfied = next(
+            (r for r in candidates if all(ref in reports for ref, _, _ in r)),
+            None,
+        )
+        recipe = satisfied or candidates[0]
         recipes[period] = recipe
-        reports.update(ref for ref, _, _ in recipe)
+        if satisfied is None:
+            reports.update(ref for ref, _, _ in recipe)
 
-    # The annual report for the most recent fully reported fiscal year carries
-    # 3 years in one row; one more, 2 years back, extends the series to 5.
+    # Each annual report carries 3 fiscal years (thstrm/frmtrm/bfefrmtrm), so
+    # reports 2 years apart chain with one year of overlap: 3 of them reach 6
+    # distinct years, which is what a "6개년 연속 상승" screen needs.
     latest_complete_year = year if quarter == 4 else year - 1
     annuals: list[ReportRef] = [
         (latest_complete_year, REPORT_ANNUAL),
         (latest_complete_year - 2, REPORT_ANNUAL),
+        (latest_complete_year - 4, REPORT_ANNUAL),
     ]
     reports.update(annuals)
-
-    oldest = quarters[-1]
-    for recipe in _quarter_recipes(*oldest):
-        if all(ref in reports for ref, _, _ in recipe):
-            recipes[oldest] = recipe
-            break
-    else:
-        recipe = _quarter_recipes(*oldest)[0]
-        recipes[oldest] = recipe
-        reports.update(ref for ref, _, _ in recipe)
 
     return sorted(reports), recipes, annuals
 
@@ -325,9 +332,9 @@ def derive_series(corp_reports: CorpReports, now: datetime) -> dict[str, list[fl
     series and an all-null one the same way.
     """
     year, quarter = latest_quarter(now)
-    quarters = _last_n_quarters(year, quarter, 5)
+    quarters = _last_n_quarters(year, quarter, SERIES_LENGTH)
     _, recipes, annuals = plan(year, quarter)
-    first, second = annuals
+    first, second, third = annuals
 
     series: dict[str, list[float | None]] = {}
     for kind, quarterly_key, annual_key in (
@@ -336,12 +343,15 @@ def derive_series(corp_reports: CorpReports, now: datetime) -> dict[str, list[fl
         ("operating_profit", "quarterlyOperatingProfit", "annualOperatingProfit"),
     ):
         series[quarterly_key] = [_apply(corp_reports, recipes[period], kind) for period in quarters]
+        # Reports chain 2 years apart with 1 year of overlap, so the overlapping
+        # column (second.t, third.t) is skipped rather than repeated.
         series[annual_key] = [
             _amount(corp_reports, first, kind, "t"),
             _amount(corp_reports, first, kind, "f"),
             _amount(corp_reports, first, kind, "bf"),
             _amount(corp_reports, second, kind, "f"),
             _amount(corp_reports, second, kind, "bf"),
+            _amount(corp_reports, third, kind, "f"),
         ]
     return {key: values for key, values in series.items() if any(v is not None for v in values)}
 
