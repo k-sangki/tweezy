@@ -76,7 +76,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--skip-flow", action="store_true", help="skip 수급/공매도 daily history collection")
     parser.add_argument("--skip-technicals", action="store_true", help="skip price-history/RS/technical pattern collection")
     parser.add_argument("--price-cache", default=".cache/kr_price_history.pkl")
-    parser.add_argument("--flow-days", type=int, default=60, help="trading days of 수급/공매도 history to collect")
+    parser.add_argument(
+        "--net-buy-days",
+        type=int,
+        default=market_flow.NET_BUY_DAYS,
+        help="trading days of 기관/외인/연기금 순매수 history (deepest filter looks back 20)",
+    )
+    parser.add_argument(
+        "--short-interest-days",
+        type=int,
+        default=market_flow.SHORT_INTEREST_DAYS,
+        help="trading days of 공매도 잔고 history (the 3-month trend filter needs ~60)",
+    )
     parser.add_argument("--limit", type=int, default=None, help="only process the first N eligible tickers (for quick local testing)")
     return parser.parse_args()
 
@@ -362,8 +373,16 @@ def main() -> None:
 
     flow_and_short: dict[str, dict[str, list[float | None]]] = {}
     if not args.skip_flow:
-        LOGGER.info("수급/공매도 이력 수집 시작 (최근 %s거래일)", args.flow_days)
-        flow_and_short = market_flow.collect_flow_and_short_interest(date, days=args.flow_days)
+        LOGGER.info(
+            "수급/공매도 이력 수집 시작 (순매수 %s거래일, 공매도 잔고 %s거래일)",
+            args.net_buy_days,
+            args.short_interest_days,
+        )
+        flow_and_short = market_flow.collect_flow_and_short_interest(
+            date,
+            net_buy_days=args.net_buy_days,
+            short_interest_days=args.short_interest_days,
+        )
 
     eligible = [
         str(raw)

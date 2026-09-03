@@ -4,6 +4,7 @@ import type {
   ProfitTurnaroundMode,
   ScreenerFilter,
   ShortInterestDropFilter,
+  ShortInterestTrendFilter,
   Stock,
   TechnicalPattern,
 } from './types';
@@ -76,6 +77,52 @@ export function isLatestPeriodLoss(series: (number | null)[] | undefined): boole
   return latest != null && latest < 0;
 }
 
+/**
+ * A trend has to be more than one day's noise, so the window is fitted with a
+ * least-squares line rather than compared end-to-end, and the fitted change
+ * across the window must be at least this share of the window's average
+ * balance. Without the floor a flat series still has a tiny non-zero slope and
+ * every stock would land in one direction or the other. 20% is the 증감률
+ * threshold the project's filter spec calls for.
+ */
+const MIN_TREND_CHANGE_RATIO = 0.2;
+
+/**
+ * True when the balance is consistently rising/falling over the last `days`
+ * trading days. `series` is most-recent-first.
+ */
+export function hasShortInterestTrend(
+  series: (number | null)[] | undefined,
+  { direction, days }: ShortInterestTrendFilter,
+): boolean {
+  if (!series || series.length < days) return false;
+  // Oldest-first, so a positive slope means the balance grew over time.
+  const window: number[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const value = series[i];
+    if (value == null) return false;
+    window.push(value);
+  }
+
+  const n = window.length;
+  const meanX = (n - 1) / 2;
+  const mean = window.reduce((sum, value) => sum + value, 0) / n;
+  if (mean <= 0) return false;
+
+  let covariance = 0;
+  let variance = 0;
+  for (let i = 0; i < n; i++) {
+    covariance += (i - meanX) * (window[i] - mean);
+    variance += (i - meanX) ** 2;
+  }
+  if (variance === 0) return false;
+
+  const fittedChange = (covariance / variance) * (n - 1);
+  if (Math.abs(fittedChange) < mean * MIN_TREND_CHANGE_RATIO) return false;
+  if (direction === 'either') return true;
+  return direction === 'rising' ? fittedChange > 0 : fittedChange < 0;
+}
+
 export function hasShortInterestDrop(
   series: (number | null)[] | undefined,
   { daysAgo, minDropPct }: ShortInterestDropFilter,
@@ -124,6 +171,16 @@ export function applyFilters(stocks: Stock[], filter: ScreenerFilter): Stock[] {
       return false;
     }
     if (filter.shortInterestDrop && !hasShortInterestDrop(stock.shortInterestBalance, filter.shortInterestDrop)) {
+      return false;
+    }
+    if (
+      filter.minShortInterestPercentile != null &&
+      (stock.shortInterestPercentile == null ||
+        stock.shortInterestPercentile < filter.minShortInterestPercentile)
+    ) {
+      return false;
+    }
+    if (filter.shortInterestTrend && !hasShortInterestTrend(stock.shortInterestBalance, filter.shortInterestTrend)) {
       return false;
     }
     if (filter.excludeQuarterlyNetLoss && isLatestPeriodLoss(stock.quarterlyNetIncome)) {

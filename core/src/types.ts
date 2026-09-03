@@ -34,6 +34,14 @@ export interface Stock {
   foreignNetBuy?: (number | null)[];
   pensionNetBuy?: (number | null)[];
   shortInterestBalance?: (number | null)[];
+  /**
+   * Short-interest balance as a percent of listed shares, as KRX publishes it
+   * (비중), plus its 0-99 rank across the universe. The absolute number is
+   * small - the whole market's p90 is about 1.2% and its maximum about 10% -
+   * so the percentile is what makes a threshold meaningful across time.
+   */
+  shortInterestRatio?: number | null;
+  shortInterestPercentile?: number | null;
   /** KRX listed share count - stands in for float, which KRX doesn't publish. */
   listedShares?: number | null;
   /**
@@ -79,6 +87,21 @@ export interface ShortInterestDropFilter {
   minDropPct: 5 | 10 | 15 | 20;
 }
 
+/**
+ * Trading days a trend is measured over. A calendar month is about 20 trading
+ * days, so "20일" and "1개월" would be the same filter - the longer windows are
+ * labelled by month instead.
+ */
+export type TrendWindow = 3 | 5 | 10 | 20 | 40 | 60;
+
+/** 'either' is the 둘다 toggle: a material move in either direction. */
+export type TrendDirection = 'rising' | 'falling' | 'either';
+
+export interface ShortInterestTrendFilter {
+  direction: TrendDirection;
+  days: TrendWindow;
+}
+
 export type InvestorPreset = 'buffett' | 'lynch' | 'oneil' | 'graham' | 'minervini' | 'greenblatt';
 
 export type TechnicalPattern = 'breakoutImminent' | 'breakoutDone' | 'volumeDryUp' | 'boxRange';
@@ -98,6 +121,9 @@ export interface ScreenerFilter {
   foreignNetBuyDays?: number;
   pensionNetBuyDays?: number;
   shortInterestDrop?: ShortInterestDropFilter;
+  /** Keep only stocks in the top (100 - this) percent by short-interest ratio. */
+  minShortInterestPercentile?: number;
+  shortInterestTrend?: ShortInterestTrendFilter;
   /**
    * Drop stocks whose most recent quarter was a loss. Unknown financials are
    * kept, not dropped - an exclusion can't be justified without the data.

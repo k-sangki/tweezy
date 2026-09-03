@@ -26,6 +26,9 @@ LOGGER = logging.getLogger("price_history")
 KEEP_SESSIONS = 320
 REQUEST_DELAY_SECONDS = 0.15
 MAX_WORKERS = 4
+# Enough for a cold ~2,700-ticker build (~9 minutes observed) with headroom,
+# but bounded so a hung KRX connection can't pin the job.
+BUDGET_SECONDS = 1500.0
 
 
 def load_cache(path: Path) -> dict[str, pd.DataFrame]:
@@ -80,23 +83,41 @@ def collect_histories(
     date: str,
     cache_path: Path,
     lookback_days: int = 520,
+    budget_seconds: float = BUDGET_SECONDS,
 ) -> dict[str, pd.DataFrame]:
     histories = load_cache(cache_path)
     start = (datetime.strptime(date, "%Y%m%d") - timedelta(days=lookback_days)).strftime("%Y%m%d")
     LOGGER.info("가격 이력 수집: %s개 종목 (%s~%s), 캐시 %s개", len(tickers), start, date, len(histories))
 
+    # pykrx exposes no request timeout, so a KRX session that stops answering
+    # (an expired login, a throttled IP) hangs a worker indefinitely - observed
+    # locally as 264 stragglers pinning the run for three hours. The whole step
+    # gets a wall-clock budget instead; whatever is missing keeps its cached
+    # history and is retried next run.
+    deadline = time.monotonic() + budget_seconds
+    completed = 0
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         futures = {
             executor.submit(fetch_history, ticker, start, date, histories.get(ticker)): ticker
             for ticker in tickers
         }
-        for index, future in enumerate(as_completed(futures), start=1):
-            ticker, frame = future.result()
-            if frame is not None and not frame.empty:
-                histories[ticker] = frame
-            if index % 500 == 0:
-                LOGGER.info("가격 이력 %s/%s 완료", index, len(futures))
-                save_cache(cache_path, histories)
+        try:
+            for future in as_completed(futures, timeout=budget_seconds):
+                ticker, frame = future.result()
+                completed += 1
+                if frame is not None and not frame.empty:
+                    histories[ticker] = frame
+                if completed % 500 == 0:
+                    LOGGER.info("가격 이력 %s/%s 완료", completed, len(futures))
+                    save_cache(cache_path, histories)
+        except TimeoutError:
+            LOGGER.warning(
+                "가격 이력 수집 제한시간(%s초) 초과 - %s/%s개만 갱신하고 진행합니다.",
+                int(budget_seconds), completed, len(futures),
+            )
+        finally:
+            if time.monotonic() >= deadline:
+                executor.shutdown(wait=False, cancel_futures=True)
 
     histories = {ticker: frame for ticker, frame in histories.items() if ticker in set(tickers)}
     save_cache(cache_path, histories)

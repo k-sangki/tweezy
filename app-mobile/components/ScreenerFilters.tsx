@@ -10,6 +10,8 @@ import {
   type ProfitTurnaroundMode,
   type ScreenerFilter,
   type TechnicalPattern,
+  type TrendDirection,
+  type TrendWindow,
 } from '@tweezy/core';
 import { useTheme, radius, spacing, type Palette } from '../lib/theme';
 import { useScreener } from '../lib/ScreenerContext';
@@ -72,6 +74,34 @@ const TECHNICAL_PATTERNS: { key: TechnicalPattern; label: string; note: string }
 
 const RS_RATING_OPTIONS = [70, 80, 90].map((n) => ({ label: String(n), value: n }));
 
+// Absolute 비중 thresholds don't work here: the market's p90 is about 1.2% and
+// its maximum about 10%, so "5% 이상" would match a dozen stocks and "10% 이상"
+// essentially one. Percentiles keep the filter meaningful as shorting activity
+// drifts over time.
+const SHORT_PERCENTILE_OPTIONS = [
+  { label: '상위 20%', value: 80 },
+  { label: '상위 10%', value: 90 },
+  { label: '상위 5%', value: 95 },
+  { label: '상위 3%', value: 97 },
+];
+
+const TREND_DIRECTION_OPTIONS: { label: string; value: TrendDirection }[] = [
+  { label: '늘어남', value: 'rising' },
+  { label: '줄어듦', value: 'falling' },
+  { label: '둘 다', value: 'either' },
+];
+
+// A calendar month is ~20 trading days, so "20일" and "1개월" would be the same
+// filter; the longer windows are labelled by month instead.
+const TREND_WINDOW_OPTIONS: { label: string; value: TrendWindow }[] = [
+  { label: '3일', value: 3 },
+  { label: '5일', value: 5 },
+  { label: '10일', value: 10 },
+  { label: '1개월', value: 20 },
+  { label: '2개월', value: 40 },
+  { label: '3개월', value: 60 },
+];
+
 interface FiltersState {
   markets: Market[];
   dividend: { on: boolean; value: number };
@@ -82,6 +112,8 @@ interface FiltersState {
   foreign: { on: boolean; days: number };
   pension: { on: boolean; days: number };
   shortInterest: { on: boolean; daysAgo: 1 | 2 | 3 | 4 | 5; minDropPct: 5 | 10 | 15 | 20 };
+  shortLevel: { on: boolean; percentile: number };
+  shortTrend: { on: boolean; direction: TrendDirection; days: TrendWindow };
   marketCap: { on: boolean; value: number };
   netLoss: { on: boolean };
   operatingLoss: { on: boolean };
@@ -101,6 +133,8 @@ const INITIAL_STATE: FiltersState = {
   foreign: { on: false, days: 5 },
   pension: { on: false, days: 5 },
   shortInterest: { on: false, daysAgo: 5, minDropPct: 10 },
+  shortLevel: { on: false, percentile: 90 },
+  shortTrend: { on: false, direction: 'falling', days: 20 },
   marketCap: { on: false, value: 300_000_000_000 },
   netLoss: { on: true },
   operatingLoss: { on: true },
@@ -119,6 +153,8 @@ type RowKey =
   | 'foreign'
   | 'pension'
   | 'shortInterest'
+  | 'shortLevel'
+  | 'shortTrend'
   | 'marketCap'
   | 'netLoss'
   | 'operatingLoss'
@@ -129,7 +165,7 @@ const GROUP_ROWS: Record<string, RowKey[]> = {
   valuation: ['dividend'],
   fundamental: ['turnaround', 'netIncome', 'revenue'],
   flow: ['institutional', 'foreign', 'pension'],
-  short: ['shortInterest'],
+  short: ['shortLevel', 'shortTrend', 'shortInterest'],
   loss: ['netLoss', 'operatingLoss'],
 };
 
@@ -162,6 +198,10 @@ export function ScreenerFilters() {
       pensionNetBuyDays: state.pension.on ? state.pension.days : undefined,
       shortInterestDrop: state.shortInterest.on
         ? { daysAgo: state.shortInterest.daysAgo, minDropPct: state.shortInterest.minDropPct }
+        : undefined,
+      minShortInterestPercentile: state.shortLevel.on ? state.shortLevel.percentile : undefined,
+      shortInterestTrend: state.shortTrend.on
+        ? { direction: state.shortTrend.direction, days: state.shortTrend.days }
         : undefined,
       minMarketCap: state.marketCap.on ? state.marketCap.value : undefined,
       excludeQuarterlyNetLoss: state.netLoss.on || undefined,
@@ -411,7 +451,42 @@ export function ScreenerFilters() {
         onCheckedChange={(checked) => toggleGroup('short', checked)}
       >
         <FilterRow
-          label="공매도 잔고 감소"
+          label="공매도 잔고가 많은 편"
+          note="상장주식 수 대비 잔고 비중이 전체 종목 중 상위권"
+          checked={state.shortLevel.on}
+          onCheckedChange={(on) => setRow('shortLevel', on)}
+        >
+          <Select
+            compact
+            label="공매도 잔고 비중 상위"
+            options={SHORT_PERCENTILE_OPTIONS}
+            value={state.shortLevel.percentile}
+            onChange={(percentile) => patch('shortLevel', { percentile, on: true })}
+          />
+        </FilterRow>
+        <FilterRow
+          label="공매도 잔고 추세"
+          note="기간 동안 잔고가 20% 이상 꾸준히 움직인 종목만"
+          checked={state.shortTrend.on}
+          onCheckedChange={(on) => setRow('shortTrend', on)}
+        >
+          <Select
+            compact
+            label="추세를 볼 기간"
+            options={TREND_WINDOW_OPTIONS}
+            value={state.shortTrend.days}
+            onChange={(days) => patch('shortTrend', { days, on: true })}
+          />
+          <Text style={styles.rowText}>동안</Text>
+          <RadioGroup
+            compact
+            options={TREND_DIRECTION_OPTIONS}
+            value={state.shortTrend.direction}
+            onChange={(direction) => patch('shortTrend', { direction, on: true })}
+          />
+        </FilterRow>
+        <FilterRow
+          label="공매도 잔고 급감"
           checked={state.shortInterest.on}
           onCheckedChange={(on) => setRow('shortInterest', on)}
         >

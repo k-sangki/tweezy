@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import logging
 import time
+from bisect import bisect_left
 from datetime import datetime, timedelta
+from typing import Any
 
 import pandas as pd
 from pykrx import stock
@@ -23,6 +25,12 @@ from pykrx import stock
 LOGGER = logging.getLogger("market_flow")
 
 MARKETS = ("KOSPI", "KOSDAQ")
+
+# The deepest net-buy filter is O'Neil's 20-day institutional check, so there's
+# no point paying for more; the short-interest trend filter reaches 3 months
+# (~60 trading days) and needs one extra day to fit a line across it.
+NET_BUY_DAYS = 25
+SHORT_INTEREST_DAYS = 65
 INVESTORS = {
     "institutionalNetBuy": "기관합계",
     "foreignNetBuy": "외국인",
@@ -97,18 +105,24 @@ def latest_short_interest_date(date: str, max_lookback_days: int = 10) -> str | 
     return None
 
 
-def collect_short_interest_history(date: str, days: int) -> dict[str, list[float | None]]:
-    """ticker -> daily short-interest balance (shares), most recent AVAILABLE trading day first."""
+def collect_short_interest_history(date: str, days: int) -> tuple[dict[str, list[float | None]], dict[str, float]]:
+    """(balance history most-recent-first, latest 비중 by ticker).
+
+    KRX publishes 비중 (balance as a percent of listed shares) on the same call
+    as the balance, so the ratio costs nothing extra and is the exchange's own
+    figure rather than one we recompute.
+    """
     anchor = latest_short_interest_date(date)
     if anchor is None:
         LOGGER.warning("공매도잔고 데이터를 찾지 못했습니다 (최근 %s일 이내 없음)", 10)
-        return {}
+        return {}, {}
     if anchor != date:
         LOGGER.info("공매도잔고 지연 공시 감지 - 기준일을 %s -> %s로 조정", date, anchor)
 
     trading_days = recent_trading_days(anchor, days)
     by_ticker: dict[str, list[float | None]] = {}
-    for day in reversed(trading_days):
+    latest_ratio: dict[str, float] = {}
+    for index, day in enumerate(reversed(trading_days)):
         for market in MARKETS:
             try:
                 frame = _throttled_call(stock.get_shorting_balance_by_ticker, day, market=market)
@@ -119,12 +133,43 @@ def collect_short_interest_history(date: str, days: int) -> dict[str, list[float
                 continue
             for ticker, value in frame["공매도잔고"].items():
                 by_ticker.setdefault(str(ticker), []).append(float(value))
-    return by_ticker
+            if index == 0 and "비중" in frame.columns:
+                for ticker, value in frame["비중"].items():
+                    latest_ratio[str(ticker)] = round(float(value), 3)
+    return by_ticker, latest_ratio
 
 
-def collect_flow_and_short_interest(date: str, days: int = 60) -> dict[str, dict[str, list[float | None]]]:
-    """Merge net-buy (x3 investor types) and short-interest history per ticker."""
-    trading_days = recent_trading_days(date, days)
+def short_interest_percentiles(ratios: dict[str, float]) -> dict[str, int]:
+    """0-99 rank of each ticker's 비중 across the whole universe.
+
+    The absolute ratio is tiny and its level drifts with how active shorting is
+    market-wide, so a fixed "N% 이상" threshold selects wildly different numbers
+    of stocks at different times; a percentile always selects the same share.
+    Ties get the same score, which matters here because ~38% of the market sits
+    at exactly 0.
+    """
+    if not ratios:
+        return {}
+    ordered = sorted(ratios.values())
+    count = len(ordered)
+    return {
+        ticker: min(99, max(0, int(100 * bisect_left(ordered, value) / count)))
+        for ticker, value in ratios.items()
+    }
+
+
+def collect_flow_and_short_interest(
+    date: str,
+    net_buy_days: int = NET_BUY_DAYS,
+    short_interest_days: int = SHORT_INTEREST_DAYS,
+) -> dict[str, dict[str, Any]]:
+    """Merge net-buy (x3 investor types) and short-interest history per ticker.
+
+    The two histories are collected over different windows because they're used
+    for different things: the deepest net-buy filter looks back 20 days, while
+    the short-interest trend filter reaches a full 3 months.
+    """
+    trading_days = recent_trading_days(date, net_buy_days)
     LOGGER.info("수급 이력 수집: 최근 %s거래일 (%s ~ %s)", len(trading_days), trading_days[0], trading_days[-1])
 
     per_field: dict[str, dict[str, list[float | None]]] = {}
@@ -132,11 +177,19 @@ def collect_flow_and_short_interest(date: str, days: int = 60) -> dict[str, dict
         LOGGER.info("%s(%s) 수집 중", field_key, investor)
         per_field[field_key] = collect_net_buy_history(trading_days, field_key, investor)
 
-    LOGGER.info("shortInterestBalance 수집 중")
-    per_field["shortInterestBalance"] = collect_short_interest_history(date, days)
+    LOGGER.info("shortInterestBalance 수집 중 (최근 %s거래일)", short_interest_days)
+    balances, ratios = collect_short_interest_history(date, short_interest_days)
+    per_field["shortInterestBalance"] = balances
 
-    merged: dict[str, dict[str, list[float | None]]] = {}
+    merged: dict[str, dict[str, Any]] = {}
     for field_key, by_ticker in per_field.items():
         for ticker, series in by_ticker.items():
             merged.setdefault(ticker, {})[field_key] = series
+
+    percentiles = short_interest_percentiles(ratios)
+    LOGGER.info("공매도 잔고 비중 산출: %s개 종목", len(ratios))
+    for ticker, ratio in ratios.items():
+        entry = merged.setdefault(ticker, {})
+        entry["shortInterestRatio"] = ratio
+        entry["shortInterestPercentile"] = percentiles.get(ticker)
     return merged
