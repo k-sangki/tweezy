@@ -52,8 +52,12 @@ export interface Stock {
   boxBreakout?: boolean;
   boxRange?: boolean;
   volumeRatio50?: number | null;
-  /** Whether this stock's own index was above its 60-day average at collection time. */
-  marketUptrend?: boolean;
+  /**
+   * Whether this stock's own index was above its 60-day average at collection
+   * time. null when the index couldn't be judged - distinct from a measured
+   * downtrend, which is `false`.
+   */
+  marketUptrend?: boolean | null;
 }
 
 /** 'qoq' = 직전 분기 대비 흑자전환, 'yoy' = 전년 동기 대비 흑자전환 */

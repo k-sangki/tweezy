@@ -170,7 +170,7 @@ def collect_technicals(
     date: str,
     cache_path: Path,
     ticker_market: dict[str, str],
-) -> tuple[dict[str, dict[str, Any]], dict[str, bool]]:
+) -> tuple[dict[str, dict[str, Any]], dict[str, bool | None]]:
     """RS ratings and price/volume patterns for every ticker with a year of history.
 
     RS is a cross-sectional percentile, so raw weighted returns are collected for
@@ -192,10 +192,16 @@ def collect_technicals(
         raw_returns[ticker] = weighted
 
     ratings = rs_engine.percentile_scores(raw_returns)
-    market_uptrend = {
-        "KOSPI": bool(rs_engine.index_uptrend(price_history.index_closes(date, "1001"))),
-        "KOSDAQ": bool(rs_engine.index_uptrend(price_history.index_closes(date, "2001"))),
+    # Left as None when the index fetch fails or is too short - coercing that to
+    # False would be indistinguishable from a measured downtrend, and would
+    # silently veto every CAN SLIM match on the strength of missing data.
+    market_uptrend: dict[str, bool | None] = {
+        "KOSPI": rs_engine.index_uptrend(price_history.index_closes(date, "1001")),
+        "KOSDAQ": rs_engine.index_uptrend(price_history.index_closes(date, "2001")),
     }
+    for name, state in market_uptrend.items():
+        if state is None:
+            LOGGER.warning("%s 지수 추세를 판정하지 못했습니다 - marketUptrend를 null로 둡니다.", name)
     LOGGER.info(
         "RS 산출 완료: %s개 종목 (시장 추세 KOSPI=%s, KOSDAQ=%s)",
         len(ratings),
@@ -231,7 +237,7 @@ def collect_technicals(
             "boxBreakout": bool(metrics["boxBreakout"]),
             "boxRange": bool(metrics["boxRange"]),
             "volumeRatio50": metrics["volumeRatio50"],
-            "marketUptrend": market_uptrend.get(ticker_market.get(ticker, ""), False),
+            "marketUptrend": market_uptrend.get(ticker_market.get(ticker, "")),
         }
     return result, market_uptrend
 
@@ -338,7 +344,7 @@ def main() -> None:
 
     ticker_market = {ticker: market_of(ticker, kospi, kosdaq) or "" for ticker in eligible}
     technicals: dict[str, dict[str, Any]] = {}
-    market_uptrend: dict[str, bool] = {}
+    market_uptrend: dict[str, bool | None] = {}
     if not args.skip_technicals:
         LOGGER.info("가격 이력/RS/기술적 지표 수집 시작: %s개 종목", len(eligible))
         technicals, market_uptrend = collect_technicals(eligible, date, Path(args.price_cache), ticker_market)

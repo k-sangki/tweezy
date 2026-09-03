@@ -9,6 +9,8 @@ export interface MarketSnapshot {
   /** ISO date (YYYY-MM-DD) of the trading day this snapshot's regular-session prices/changes reflect. */
   date: string;
   stocks: Stock[];
+  /** Per-market: index above its 60-day average. null when it couldn't be judged. */
+  marketUptrend?: Record<string, boolean | null>;
 }
 
 export interface MarketDataProvider {
@@ -43,6 +45,6 @@ export class StaticFeedMarketDataProvider implements MarketDataProvider {
       throw new Error(`시세 피드를 불러오지 못했습니다: ${response.status}`);
     }
     const payload = (await response.json()) as MarketFeedPayload;
-    return { date: payload.date, stocks: payload.items };
+    return { date: payload.date, stocks: payload.items, marketUptrend: payload.marketUptrend };
   }
 }

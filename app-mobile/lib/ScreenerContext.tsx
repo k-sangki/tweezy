@@ -17,6 +17,8 @@ interface ScreenerContextValue {
   isLoading: boolean;
   /** ISO date (YYYY-MM-DD) of the trading day the live feed's prices/changes reflect. Null until live data loads. */
   feedDate: string | null;
+  /** Per-market: index above its 60-day average. Drives O'Neil's M leg, so it explains an empty result. */
+  marketUptrend: Record<string, boolean | null> | null;
 }
 
 const ScreenerContext = createContext<ScreenerContextValue | null>(null);
@@ -29,15 +31,17 @@ export function ScreenerProvider({ children }: { children: ReactNode }) {
   const [isLiveData, setIsLiveData] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [feedDate, setFeedDate] = useState<string | null>(null);
+  const [marketUptrend, setMarketUptrend] = useState<Record<string, boolean | null> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     marketDataProvider
       .getSnapshot()
-      .then(({ stocks: liveStocks, date }) => {
+      .then(({ stocks: liveStocks, date, marketUptrend: uptrend }) => {
         if (cancelled || liveStocks.length === 0) return;
         setStocks(liveStocks);
         setFeedDate(date);
+        setMarketUptrend(uptrend ?? null);
         setIsLiveData(true);
       })
       .catch((error: unknown) => {
@@ -55,8 +59,8 @@ export function ScreenerProvider({ children }: { children: ReactNode }) {
   const filteredStocks = useMemo(() => applyFilters(stocks, filter), [stocks, filter]);
 
   const value = useMemo(
-    () => ({ stocks, filteredStocks, filter, setFilter, isLiveData, isLoading, feedDate }),
-    [stocks, filteredStocks, filter, isLiveData, isLoading, feedDate],
+    () => ({ stocks, filteredStocks, filter, setFilter, isLiveData, isLoading, feedDate, marketUptrend }),
+    [stocks, filteredStocks, filter, isLiveData, isLoading, feedDate, marketUptrend],
   );
 
   return <ScreenerContext.Provider value={value}>{children}</ScreenerContext.Provider>;

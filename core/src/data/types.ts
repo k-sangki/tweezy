@@ -34,5 +34,7 @@ export interface MarketFeedPayload {
   date: string;
   updatedAt: string;
   source: string;
+  /** Per-market: index above its 60-day average. null when it couldn't be judged. */
+  marketUptrend?: Record<string, boolean | null>;
   items: Stock[];
 }

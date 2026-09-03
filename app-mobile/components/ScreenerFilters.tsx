@@ -138,7 +138,11 @@ const AVAILABLE_PRESETS = INVESTOR_PRESETS.filter((preset) => PRESET_INFO[preset
 export function ScreenerFilters() {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { setFilter } = useScreener();
+  const { setFilter, marketUptrend } = useScreener();
+  // O'Neil's M leg vetoes every name while the index is below its 60-day
+  // average, so say that outright rather than leaving a bare "0 종목".
+  const marketDowntrend =
+    marketUptrend != null && Object.values(marketUptrend).every((state) => state === false);
   const [state, setState] = useState<FiltersState>(INITIAL_STATE);
   const [infoPreset, setInfoPreset] = useState<InvestorPreset | null>(null);
 
@@ -449,11 +453,13 @@ export function ScreenerFilters() {
               onCheckedChange={() => togglePreset(preset)}
               unavailable={!info.available}
               note={
-                info.available
-                  ? pending > 0
-                    ? `일부 기준만 적용 중 (${pending}개 기준은 데이터 준비 중)`
-                    : undefined
-                  : '데이터 준비 중 - 재무제표 항목이 더 수집되면 활성화됩니다'
+                !info.available
+                  ? '데이터 준비 중 - 재무제표 항목이 더 수집되면 활성화됩니다'
+                  : preset === 'oneil' && marketDowntrend
+                    ? '지수가 60일선 아래입니다 (M 조건) - 지금은 결과가 나오지 않습니다'
+                    : pending > 0
+                      ? `일부 기준만 적용 중 (${pending}개 기준은 데이터 준비 중)`
+                      : undefined
               }
             >
               <Text style={styles.tagline}>{info.tagline}</Text>

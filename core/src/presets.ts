@@ -154,8 +154,11 @@ function matchesOneil(stock: Stock): boolean {
   if (stock.listedShares == null || stock.listedShares > ONEIL_MAX_LISTED_SHARES) return false;
   // L: top fifth of the market on relative strength.
   if (stock.rsRating == null || stock.rsRating < 80) return false;
-  // M: only buy while the stock's own index is in an uptrend.
-  if (stock.marketUptrend !== true) return false;
+  // M: only buy while the stock's own index is in an uptrend. A measured
+  // downtrend vetoes every name - that is the point of the M leg - but an
+  // undetermined market (null) doesn't, since vetoing the whole preset on
+  // missing data would look like a broken screen rather than a bearish one.
+  if (stock.marketUptrend === false) return false;
 
   const quarterGrowth = yoyGrowthPct(stock.quarterlyNetIncome);
   if (quarterGrowth == null || quarterGrowth < 25) return false;
