@@ -71,6 +71,12 @@ DEFAULT_MAX_AGE_DAYS = 400
 # fnlttMultiAcnt accepts at most 100 corp_codes per request (status 021 beyond).
 MULTI_BATCH_SIZE = 100
 
+# DART tolerates the batch pass at full speed but starts dropping connections
+# partway through the per-company pass, so requests are spaced and retried.
+REQUEST_DELAY_SECONDS = 0.25
+BACKOFF_BASE_SECONDS = 1.0
+MAX_ATTEMPTS = 4
+
 KINDS = ("revenue", "profit", "operating_profit")
 
 # (account_id fragments, account_nm fragments, statement divisions) for the
@@ -374,18 +380,28 @@ def save_reports(path: Path, now: datetime, reports: dict[str, CorpReports]) -> 
 # --------------------------------------------------------------------------
 
 def _get(url: str, params: dict[str, str], timeout: int) -> dict[str, Any]:
+    """One OpenDART call, with backoff.
+
+    DART throttles a sustained burst by closing the connection rather than
+    returning a status, so a single 1-second retry wasn't enough: the second
+    failure escaped as a bare RequestException and took the whole collection
+    down with it. Failures are raised as RuntimeError so callers can drop one
+    report and keep going.
+    """
     import requests
 
-    for attempt in range(2):
+    last_error: Exception | None = None
+    for attempt in range(MAX_ATTEMPTS):
         try:
+            time.sleep(REQUEST_DELAY_SECONDS)
             response = requests.get(url, params=params, timeout=timeout)
             response.raise_for_status()
             return response.json()
-        except (requests.RequestException, ValueError):
-            if attempt:
-                raise
-            time.sleep(1.0)
-    return {}
+        except (requests.RequestException, ValueError) as error:
+            last_error = error
+            if attempt < MAX_ATTEMPTS - 1:
+                time.sleep(BACKOFF_BASE_SECONDS * (2 ** attempt))
+    raise RuntimeError(f"요청 실패 ({MAX_ATTEMPTS}회 시도): {last_error}")
 
 
 def _check_status(payload: dict[str, Any]) -> str:
@@ -502,7 +518,7 @@ def collect_financials(
         except DailyLimitReached:
             limit_reached.set()
             return
-        except RuntimeError as error:
+        except Exception as error:  # noqa: BLE001 - one bad batch must not sink the run
             LOGGER.warning("배치 수집 실패 %s: %s", ref, error)
             return
         for code in codes:
@@ -518,6 +534,9 @@ def collect_financials(
                     on_progress(store)
 
     # --- pass 2: single-company upgrade for the priority tier ---------------
+    # A company that fails here keeps its batch-sourced figures, so failures
+    # are counted and summarised rather than logged 3,000 times.
+    failures: list[str] = []
     priority = [code for code in priority_codes if code in set(corp_codes)]
     upgrade_jobs = [
         (code, ref)
@@ -540,8 +559,8 @@ def collect_financials(
         except DailyLimitReached:
             limit_reached.set()
             return
-        except RuntimeError as error:
-            LOGGER.warning("%s %s 재무 수집 실패: %s", code, ref, error)
+        except Exception as error:  # noqa: BLE001 - one company must not sink the run
+            failures.append(f"{code}/{ref[0]}-{ref[1]}: {error}")
             return
         if extracted:
             put(code, ref, extracted)
@@ -556,6 +575,11 @@ def collect_financials(
                     if on_progress:
                         on_progress(store)
 
+    if failures:
+        LOGGER.warning(
+            "보정 %s/%s건 실패 - 해당 기업은 주요계정(당기순이익 총액) 값을 유지합니다. 예: %s",
+            len(failures), len(upgrade_jobs), "; ".join(failures[:3]),
+        )
     if limit_reached.is_set():
         LOGGER.warning("OpenDART 일일 한도 도달 - 수집한 만큼만 반영하고 다음 실행에서 이어갑니다.")
     if on_progress:
