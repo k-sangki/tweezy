@@ -6,13 +6,16 @@ import { StockListItem } from '@tweezy/ui';
 import { ScreenerFilters } from '../components/ScreenerFilters';
 import { useTheme, spacing, type Palette } from '../lib/theme';
 import { sessionChangeLabel } from '../lib/sessionLabel';
+import { isStale, updatedLabel } from '../lib/updatedLabel';
 import { useScreener } from '../lib/ScreenerContext';
 
 export default function ScreenerListScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { filteredStocks, isLiveData, isLoading, feedDate } = useScreener();
+  const { filteredStocks, isLiveData, isLoading, feedDate, feedUpdatedAt } = useScreener();
+  const updated = updatedLabel(feedUpdatedAt);
+  const stale = isStale(feedUpdatedAt);
 
   const openStock = (stock: Stock) => router.push(`/stock/${stock.ticker}`);
 
@@ -34,6 +37,9 @@ export default function ScreenerListScreen() {
                 <Text style={styles.countNumber}>{filteredStocks.length}</Text>개 종목
                 {isLoading ? ' · 불러오는 중' : !isLiveData ? ' · 샘플 데이터' : ''}
               </Text>
+              {updated ? (
+                <Text style={[styles.updated, stale && styles.updatedStale]}>{updated}</Text>
+              ) : null}
             </View>
           </>
         }
@@ -60,11 +66,24 @@ const createStyles = (colors: Palette) =>
       paddingTop: spacing.sm,
     },
     countRow: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      justifyContent: 'space-between',
       paddingVertical: spacing.sm,
     },
     count: {
       fontSize: 14,
       color: colors.textMuted,
+    },
+    updated: {
+      fontSize: 13,
+      color: colors.textMuted,
+    },
+    // Deliberately not colour-coded: red/blue already mean up/down on this
+    // screen, so either would read as a price signal rather than a warning.
+    updatedStale: {
+      color: colors.text,
+      fontWeight: '700',
     },
     countNumber: {
       color: colors.text,

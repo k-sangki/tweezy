@@ -19,6 +19,8 @@ interface ScreenerContextValue {
   feedDate: string | null;
   /** Per-market: index above its 60-day average. Drives O'Neil's M leg, so it explains an empty result. */
   marketUptrend: Record<string, boolean | null> | null;
+  /** When the collector produced the live snapshot. Null until live data loads. */
+  feedUpdatedAt: string | null;
 }
 
 const ScreenerContext = createContext<ScreenerContextValue | null>(null);
@@ -32,15 +34,17 @@ export function ScreenerProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [feedDate, setFeedDate] = useState<string | null>(null);
   const [marketUptrend, setMarketUptrend] = useState<Record<string, boolean | null> | null>(null);
+  const [feedUpdatedAt, setFeedUpdatedAt] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     marketDataProvider
       .getSnapshot()
-      .then(({ stocks: liveStocks, date, marketUptrend: uptrend }) => {
+      .then(({ stocks: liveStocks, date, updatedAt, marketUptrend: uptrend }) => {
         if (cancelled || liveStocks.length === 0) return;
         setStocks(liveStocks);
         setFeedDate(date);
+        setFeedUpdatedAt(updatedAt ?? null);
         setMarketUptrend(uptrend ?? null);
         setIsLiveData(true);
       })
@@ -59,8 +63,11 @@ export function ScreenerProvider({ children }: { children: ReactNode }) {
   const filteredStocks = useMemo(() => applyFilters(stocks, filter), [stocks, filter]);
 
   const value = useMemo(
-    () => ({ stocks, filteredStocks, filter, setFilter, isLiveData, isLoading, feedDate, marketUptrend }),
-    [stocks, filteredStocks, filter, isLiveData, isLoading, feedDate, marketUptrend],
+    () => ({
+      stocks, filteredStocks, filter, setFilter,
+      isLiveData, isLoading, feedDate, feedUpdatedAt, marketUptrend,
+    }),
+    [stocks, filteredStocks, filter, isLiveData, isLoading, feedDate, feedUpdatedAt, marketUptrend],
   );
 
   return <ScreenerContext.Provider value={value}>{children}</ScreenerContext.Provider>;

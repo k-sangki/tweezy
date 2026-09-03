@@ -9,6 +9,8 @@ export interface MarketSnapshot {
   /** ISO date (YYYY-MM-DD) of the trading day this snapshot's regular-session prices/changes reflect. */
   date: string;
   stocks: Stock[];
+  /** When the collector produced this snapshot, e.g. "2026-09-03 18:52 KST". */
+  updatedAt?: string;
   /** Per-market: index above its 60-day average. null when it couldn't be judged. */
   marketUptrend?: Record<string, boolean | null>;
 }
@@ -45,6 +47,11 @@ export class StaticFeedMarketDataProvider implements MarketDataProvider {
       throw new Error(`시세 피드를 불러오지 못했습니다: ${response.status}`);
     }
     const payload = (await response.json()) as MarketFeedPayload;
-    return { date: payload.date, stocks: payload.items, marketUptrend: payload.marketUptrend };
+    return {
+      date: payload.date,
+      stocks: payload.items,
+      updatedAt: payload.updatedAt,
+      marketUptrend: payload.marketUptrend,
+    };
   }
 }
