@@ -196,7 +196,10 @@ def collect_technicals(
 
     RS is a cross-sectional percentile, so raw weighted returns are collected for
     the whole universe first, then ranked - a single stock's rating depends on
-    everyone else's.
+    everyone else's. Ranking happens within KOSPI and within KOSDAQ separately:
+    the two indexes move differently enough that a combined ranking would hand
+    most of the high ratings to whichever market happened to be running, which
+    is exactly what the rating is supposed to control for.
     """
     histories = price_history.collect_histories(tickers, date, cache_path)
 
@@ -212,7 +215,15 @@ def collect_technicals(
         series_by_ticker[ticker] = series
         raw_returns[ticker] = weighted
 
-    ratings = rs_engine.percentile_scores(raw_returns)
+    ratings: dict[str, int] = {}
+    for market in ("KOSPI", "KOSDAQ"):
+        peers = {
+            ticker: value
+            for ticker, value in raw_returns.items()
+            if ticker_market.get(ticker) == market
+        }
+        ratings.update(rs_engine.percentile_scores(peers))
+        LOGGER.info("RS 백분위 산출 (%s): %s개 종목", market, len(peers))
     # Left as None when the index fetch fails or is too short - coercing that to
     # False would be indistinguishable from a measured downtrend, and would
     # silently veto every CAN SLIM match on the strength of missing data.
@@ -261,6 +272,58 @@ def collect_technicals(
             "marketUptrend": market_uptrend.get(ticker_market.get(ticker, "")),
         }
     return result, market_uptrend
+
+
+def magic_formula_ranks(
+    financials: dict[str, dict[str, list[float | None]]],
+    corp_codes: dict[str, str],
+    market_cap: pd.Series,
+) -> dict[str, int]:
+    """Greenblatt's magic formula as a 1-99 percentile per ticker (99 = best).
+
+    이익수익률 = EBIT / EV, 투하자본이익률 = EBIT / (순운전자본 + 순고정자산).
+    Both are ranked across the market and the two ranks are summed, which is
+    the whole method - so it can only be computed here, with every company in
+    hand, not per-stock in the client.
+
+    EV subtracts cash where the full-taxonomy fetch supplied it; for companies
+    covered only by 주요계정 (which stops at 유동자산) cash is treated as zero,
+    which understates earnings yield rather than overstating it.
+    """
+    def newest(series: list[float | None] | None) -> float | None:
+        return series[0] if series else None
+
+    earnings_yield: dict[str, float] = {}
+    return_on_capital: dict[str, float] = {}
+    for ticker, corp_code in corp_codes.items():
+        entry = financials.get(corp_code)
+        if not entry or ticker not in market_cap.index:
+            continue
+        ebit = newest(entry.get("annualOperatingProfit"))
+        liabilities = newest(entry.get("annualTotalLiabilities"))
+        current_assets = newest(entry.get("annualCurrentAssets"))
+        current_liabilities = newest(entry.get("annualCurrentLiabilities"))
+        noncurrent_assets = newest(entry.get("annualNonCurrentAssets"))
+        if None in (ebit, liabilities, current_assets, current_liabilities, noncurrent_assets):
+            continue
+        cash = newest(entry.get("annualCash")) or 0.0
+
+        enterprise_value = float(market_cap.get(ticker, 0.0)) + liabilities - cash
+        invested_capital = (current_assets - current_liabilities) + noncurrent_assets
+        # Negative capital or a negative EV makes both ratios meaningless.
+        if enterprise_value <= 0 or invested_capital <= 0 or ebit <= 0:
+            continue
+        earnings_yield[ticker] = ebit / enterprise_value
+        return_on_capital[ticker] = ebit / invested_capital
+
+    shared = set(earnings_yield) & set(return_on_capital)
+    if not shared:
+        return {}
+    yield_rank = rs_engine.percentile_scores({t: earnings_yield[t] for t in shared})
+    capital_rank = rs_engine.percentile_scores({t: return_on_capital[t] for t in shared})
+    combined = {ticker: yield_rank[ticker] + capital_rank[ticker] for ticker in shared}
+    LOGGER.info("마법공식 순위 산출: %s개 종목", len(combined))
+    return rs_engine.percentile_scores({t: float(v) for t, v in combined.items()})
 
 
 def collect_fundamentals(date: str) -> pd.DataFrame:
@@ -371,6 +434,8 @@ def main() -> None:
     else:
         LOGGER.warning("DART_API_KEY가 없어 corpCode 매핑 및 재무제표 수집을 건너뜁니다.")
 
+    magic_ranks = magic_formula_ranks(financials, corp_codes, market_cap) if financials else {}
+
     flow_and_short: dict[str, dict[str, list[float | None]]] = {}
     if not args.skip_flow:
         LOGGER.info(
@@ -443,6 +508,8 @@ def main() -> None:
             item.update(technicals[ticker])
         if ticker in listed_shares.index:
             item["listedShares"] = int(listed_shares.get(ticker, 0)) or None
+        if ticker in magic_ranks:
+            item["magicFormulaRank"] = magic_ranks[ticker]
         items.append(item)
 
     items.sort(key=lambda item: -item["marketCap"])

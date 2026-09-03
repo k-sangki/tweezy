@@ -81,12 +81,27 @@ MAX_ATTEMPTS = 4
 # pass gives up after this many consecutive failures and resumes next run.
 CONSECUTIVE_FAILURE_LIMIT = 30
 
-KINDS = ("revenue", "profit", "operating_profit")
+# Income-statement kinds carry a standalone quarterly series and an annual one;
+# balance-sheet kinds are point-in-time, so only the annual snapshots are kept.
+INCOME_KINDS = ("revenue", "profit", "operating_profit")
+BALANCE_KINDS = (
+    "total_liabilities",
+    "total_equity",
+    "current_assets",
+    "current_liabilities",
+    "noncurrent_assets",
+    "noncurrent_liabilities",
+    "cash",
+)
+KINDS = INCOME_KINDS + BALANCE_KINDS
 
-# Quarters and fiscal years per series. The screener's deepest streak filter is
-# "연속 5회 상승", and N consecutive increases need N+1 data points - with 5 the
-# option could never match anything.
-SERIES_LENGTH = 6
+# Quarters and fiscal years per series, sized by the deepest filter that reads
+# each. Quarters: Lynch checks year-over-year growth in 3 of the last 4
+# quarters, and each comparison needs the same quarter a year earlier, so 4
+# pairs need 8 quarters. Years: "연속 5회 상승" needs 6 (N increases need N+1
+# points) and Buffett's 5-year profit check fits inside that.
+QUARTER_SERIES_LENGTH = 8
+ANNUAL_SERIES_LENGTH = 6
 
 # (account_id fragments, account_nm fragments, statement divisions) for the
 # single-company API, which exposes the full IFRS taxonomy.
@@ -106,6 +121,18 @@ ACCOUNT_DEFINITIONS: dict[str, tuple[tuple[str, ...], tuple[str, ...], set[str]]
         ("영업이익", "영업손익"),
         {"IS", "CIS"},
     ),
+    "total_liabilities": (("Liabilities",), ("부채총계",), {"BS"}),
+    "total_equity": (("Equity",), ("자본총계",), {"BS"}),
+    "current_assets": (("CurrentAssets",), ("유동자산",), {"BS"}),
+    "current_liabilities": (("CurrentLiabilities",), ("유동부채",), {"BS"}),
+    "noncurrent_assets": (("NoncurrentAssets",), ("비유동자산",), {"BS"}),
+    "noncurrent_liabilities": (("NoncurrentLiabilities",), ("비유동부채",), {"BS"}),
+    # Only the full-taxonomy API carries cash; 주요계정 stops at 유동자산.
+    "cash": (
+        ("CashAndCashEquivalents",),
+        ("현금및현금성자산",),
+        {"BS"},
+    ),
 }
 
 # The multi-company API carries no account_id and only the 16 주요계정, so it
@@ -115,7 +142,22 @@ MULTI_ACCOUNT_NAMES: dict[str, tuple[str, ...]] = {
     "revenue": ("매출액", "영업수익", "이자수익"),
     "profit": ("당기순이익(손실)", "당기순이익"),
     "operating_profit": ("영업이익", "영업이익(손실)"),
+    "total_liabilities": ("부채총계",),
+    "total_equity": ("자본총계",),
+    "current_assets": ("유동자산",),
+    "current_liabilities": ("유동부채",),
+    "noncurrent_assets": ("비유동자산",),
+    "noncurrent_liabilities": ("비유동부채",),
+    # Absent from 주요계정 - only the priority tier's full-taxonomy fetch has it.
+    "cash": (),
 }
+
+# Balance-sheet rows live under sj_div "BS"; the income statement is IS/CIS.
+MULTI_STATEMENT_DIV = {kind: ("BS" if kind in ("total_liabilities", "total_equity",
+                                               "current_assets", "current_liabilities",
+                                               "noncurrent_assets", "noncurrent_liabilities",
+                                               "cash") else "IS")
+                      for kind in MULTI_ACCOUNT_NAMES}
 
 # Stored per report per kind. Short keys because this file holds ~16k reports.
 AMOUNT_FIELDS = {
@@ -172,8 +214,11 @@ def find_account(rows: list[dict[str, Any]], kind: str) -> dict[str, Any] | None
 def find_multi_account(rows: list[dict[str, Any]], kind: str) -> dict[str, Any] | None:
     """Pick one 주요계정 row, preferring 연결(CFS) over 별도(OFS)."""
     names = MULTI_ACCOUNT_NAMES[kind]
+    if not names:
+        return None
+    statement = MULTI_STATEMENT_DIV[kind]
     for fs_div in ("CFS", "OFS"):
-        scoped = [row for row in rows if row.get("fs_div") == fs_div and row.get("sj_div") == "IS"]
+        scoped = [row for row in rows if row.get("fs_div") == fs_div and row.get("sj_div") == statement]
         for name in names:
             match = next((row for row in scoped if str(row.get("account_nm", "")).strip() == name), None)
             if match:
@@ -266,7 +311,7 @@ def plan(year: int, quarter: int) -> tuple[list[ReportRef], dict[tuple[int, int]
     what keeps SERIES_LENGTH=6 quarters down to the same handful of reports
     that 5 used to need.
     """
-    quarters = _last_n_quarters(year, quarter, SERIES_LENGTH)
+    quarters = _last_n_quarters(year, quarter, QUARTER_SERIES_LENGTH)
     reports: set[ReportRef] = set()
     recipes: dict[tuple[int, int], Recipe] = {}
 
@@ -282,13 +327,12 @@ def plan(year: int, quarter: int) -> tuple[list[ReportRef], dict[tuple[int, int]
             reports.update(ref for ref, _, _ in recipe)
 
     # Each annual report carries 3 fiscal years (thstrm/frmtrm/bfefrmtrm), so
-    # reports 2 years apart chain with one year of overlap: 3 of them reach 6
-    # distinct years, which is what a "6개년 연속 상승" screen needs.
+    # reports 2 years apart chain with one year of overlap: each one past the
+    # first adds 2 distinct years.
     latest_complete_year = year if quarter == 4 else year - 1
     annuals: list[ReportRef] = [
-        (latest_complete_year, REPORT_ANNUAL),
-        (latest_complete_year - 2, REPORT_ANNUAL),
-        (latest_complete_year - 4, REPORT_ANNUAL),
+        (latest_complete_year - 2 * step, REPORT_ANNUAL)
+        for step in range((ANNUAL_SERIES_LENGTH + 1) // 2)
     ]
     reports.update(annuals)
 
@@ -332,9 +376,17 @@ def derive_series(corp_reports: CorpReports, now: datetime) -> dict[str, list[fl
     series and an all-null one the same way.
     """
     year, quarter = latest_quarter(now)
-    quarters = _last_n_quarters(year, quarter, SERIES_LENGTH)
+    quarters = _last_n_quarters(year, quarter, QUARTER_SERIES_LENGTH)
     _, recipes, annuals = plan(year, quarter)
-    first, second, third = annuals
+
+    def annual_years(kind: str) -> list[float | None]:
+        """Newest first. The first report gives 3 years; each later one is 2
+        years back and contributes its 2 older columns, since its newest column
+        repeats the previous report's oldest."""
+        values = [_amount(corp_reports, annuals[0], kind, field) for field in ("t", "f", "bf")]
+        for ref in annuals[1:]:
+            values.extend(_amount(corp_reports, ref, kind, field) for field in ("f", "bf"))
+        return values[:ANNUAL_SERIES_LENGTH]
 
     series: dict[str, list[float | None]] = {}
     for kind, quarterly_key, annual_key in (
@@ -343,16 +395,21 @@ def derive_series(corp_reports: CorpReports, now: datetime) -> dict[str, list[fl
         ("operating_profit", "quarterlyOperatingProfit", "annualOperatingProfit"),
     ):
         series[quarterly_key] = [_apply(corp_reports, recipes[period], kind) for period in quarters]
-        # Reports chain 2 years apart with 1 year of overlap, so the overlapping
-        # column (second.t, third.t) is skipped rather than repeated.
-        series[annual_key] = [
-            _amount(corp_reports, first, kind, "t"),
-            _amount(corp_reports, first, kind, "f"),
-            _amount(corp_reports, first, kind, "bf"),
-            _amount(corp_reports, second, kind, "f"),
-            _amount(corp_reports, second, kind, "bf"),
-            _amount(corp_reports, third, kind, "f"),
-        ]
+        series[annual_key] = annual_years(kind)
+
+    # Balance-sheet items are a snapshot at each fiscal year end, so there is no
+    # standalone-quarter equivalent to derive.
+    for kind, key in (
+        ("total_liabilities", "annualTotalLiabilities"),
+        ("total_equity", "annualTotalEquity"),
+        ("current_assets", "annualCurrentAssets"),
+        ("current_liabilities", "annualCurrentLiabilities"),
+        ("noncurrent_assets", "annualNonCurrentAssets"),
+        ("noncurrent_liabilities", "annualNonCurrentLiabilities"),
+        ("cash", "annualCash"),
+    ):
+        series[key] = annual_years(kind)
+
     return {key: values for key, values in series.items() if any(v is not None for v in values)}
 
 

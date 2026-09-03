@@ -27,6 +27,25 @@ export interface Stock {
   annualRevenue?: (number | null)[];
   annualOperatingProfit?: (number | null)[];
   /**
+   * Fiscal-year-end balance sheet snapshots, newest first. No quarterly
+   * equivalent exists - a balance sheet is a point in time, not a period.
+   * `annualCash` comes only from the full-taxonomy fetch, so it is present
+   * for the precise tier and absent for the rest.
+   */
+  annualTotalLiabilities?: (number | null)[];
+  annualTotalEquity?: (number | null)[];
+  annualCurrentAssets?: (number | null)[];
+  annualCurrentLiabilities?: (number | null)[];
+  annualNonCurrentAssets?: (number | null)[];
+  annualNonCurrentLiabilities?: (number | null)[];
+  annualCash?: (number | null)[];
+  /**
+   * Joel Greenblatt's magic-formula standing: the summed rank of earnings
+   * yield and return on capital across the market, as a 1-99 percentile where
+   * 99 is best. Cross-sectional, so the collector computes it.
+   */
+  magicFormulaRank?: number | null;
+  /**
    * Daily net-buy volume by investor type and daily short-interest
    * balance (shares), most recent trading day first, up to ~60 days.
    */

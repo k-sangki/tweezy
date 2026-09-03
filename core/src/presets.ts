@@ -39,9 +39,9 @@ export const PRESET_INFO: Record<InvestorPreset, PresetInfo> = {
     criteria: [
       { label: '최근 5개년 연간 순이익 전부 흑자', applied: true },
       { label: 'PBR 3배 이하', applied: true },
-      { label: 'ROE 3년 평균 15% 이상', applied: false },
-      { label: '부채비율 100% 이하', applied: false },
-      { label: '영업이익률 안정성', applied: false },
+      { label: 'ROE 3개년 평균 15% 이상, 각 연도 10% 이상', applied: true },
+      { label: '부채비율 100% 이하', applied: true },
+      { label: '영업이익률 5개년 평균 10% 이상 + 변동성 안정', applied: true },
     ],
   },
   lynch: {
@@ -51,10 +51,10 @@ export const PRESET_INFO: Record<InvestorPreset, PresetInfo> = {
       '피델리티 마젤란 펀드를 1977~1990년 운용하며 연평균 약 29%의 수익률을 낸 것으로 유명합니다. 생활 속에서 이해되는 기업을 고르되, 성장 속도에 비해 비싸지 않은 가격(PEG)을 고집했습니다.',
     available: true,
     criteria: [
-      { label: '최근 분기 순이익 전년동기 대비 15% 이상 증가', applied: true },
+      { label: '최근 4분기 중 3개 이상 순이익 전년동기 15% 이상 증가', applied: true },
       { label: '최근 분기 매출 전년동기 대비 10% 이상 증가', applied: true },
-      { label: 'PEG 1.0 미만', applied: false },
-      { label: '부채비율 100% 이하', applied: false },
+      { label: 'PEG 1.0 미만', applied: true },
+      { label: '부채비율 100% 이하', applied: true },
       { label: '기관 보유 비중 30% 이하', applied: false },
     ],
   },
@@ -83,9 +83,9 @@ export const PRESET_INFO: Record<InvestorPreset, PresetInfo> = {
     criteria: [
       { label: 'PBR 1.0 미만', applied: true },
       { label: 'PER 10 이하', applied: true },
-      { label: '유동비율 2.0 이상', applied: false },
-      { label: '장기부채가 순유동자산 이하', applied: false },
-      { label: '시가총액 ≤ (유동자산-총부채) × 0.67', applied: false },
+      { label: '유동비율 2.0 이상', applied: true },
+      { label: '장기부채가 순유동자산 이하', applied: true },
+      { label: '시가총액 ≤ (유동자산-총부채) × 0.67', applied: true },
       { label: '최근 5개년 연속 배당', applied: false },
     ],
   },
@@ -108,12 +108,12 @@ export const PRESET_INFO: Record<InvestorPreset, PresetInfo> = {
     tagline: '마법공식 · 퀀트',
     description:
       '고담 캐피탈 창업자이자 『주식시장을 이기는 작은 책』의 저자입니다. 싸게 사고(이익수익률) 좋은 기업을 산다(투하자본이익률)는 두 가지 지표만 순위로 합산하는 마법공식을 제시했습니다.',
-    available: false,
+    available: true,
     criteria: [
-      { label: '이익수익률 EBIT/EV 상위', applied: false },
-      { label: '투하자본이익률 ROC 상위', applied: false },
-      { label: '두 순위 합산 상위', applied: false },
-      { label: '시가총액 1,000억 이상', applied: false },
+      { label: '이익수익률 EBIT/EV 상위', applied: true },
+      { label: '투하자본이익률 ROC 상위', applied: true },
+      { label: '두 순위 합산 상위 3%', applied: true },
+      { label: '시가총액 1,000억 이상', applied: true },
     ],
   },
 };
@@ -121,13 +121,31 @@ export const PRESET_INFO: Record<InvestorPreset, PresetInfo> = {
 /** 'yoy' comparison against the same quarter one year ago (index 4, most-recent-first). */
 const YOY_QUARTER_OFFSET = 4;
 
-function yoyGrowthPct(series: (number | null)[] | undefined): number | null {
+function yoyGrowthPct(series: (number | null)[] | undefined, offset = 0): number | null {
   if (!series) return null;
-  const latest = series[0];
-  const prior = series[YOY_QUARTER_OFFSET];
+  const latest = series[offset];
+  const prior = series[offset + YOY_QUARTER_OFFSET];
   // A loss-making base makes percentage growth meaningless, so treat it as unknown.
   if (latest == null || prior == null || prior <= 0) return null;
   return (latest / prior - 1) * 100;
+}
+
+/**
+ * How many of the last `quarters` quarters grew at least `minPct` year over
+ * year. Each comparison needs the same quarter a year earlier, so checking 4
+ * quarters reads 8 entries.
+ */
+function quartersGrowingAtLeast(
+  series: (number | null)[] | undefined,
+  minPct: number,
+  quarters: number,
+): number {
+  let count = 0;
+  for (let offset = 0; offset < quarters; offset++) {
+    const growth = yoyGrowthPct(series, offset);
+    if (growth != null && growth >= minPct) count++;
+  }
+  return count;
 }
 
 function allPositive(series: (number | null)[] | undefined, count: number): boolean {
@@ -135,14 +153,89 @@ function allPositive(series: (number | null)[] | undefined, count: number): bool
   return series.slice(0, count).every((value) => value != null && value > 0);
 }
 
+function latest(series: (number | null)[] | undefined): number | null {
+  return series?.[0] ?? null;
+}
+
+/** 부채총계 ÷ 자본총계 × 100. Null when either side is missing or equity is wiped out. */
+export function debtRatio(stock: Stock): number | null {
+  const liabilities = latest(stock.annualTotalLiabilities);
+  const equity = latest(stock.annualTotalEquity);
+  if (liabilities == null || equity == null || equity <= 0) return null;
+  return (liabilities / equity) * 100;
+}
+
+/** 유동자산 ÷ 유동부채 × 100. */
+export function currentRatio(stock: Stock): number | null {
+  const assets = latest(stock.annualCurrentAssets);
+  const liabilities = latest(stock.annualCurrentLiabilities);
+  if (assets == null || liabilities == null || liabilities <= 0) return null;
+  return (assets / liabilities) * 100;
+}
+
+/** 당기순이익 ÷ 자본총계 × 100, for one fiscal year back from `offset`. */
+export function returnOnEquity(stock: Stock, offset = 0): number | null {
+  const profit = stock.annualNetIncome?.[offset];
+  const equity = stock.annualTotalEquity?.[offset];
+  if (profit == null || equity == null || equity <= 0) return null;
+  return (profit / equity) * 100;
+}
+
+/**
+ * PER ÷ 연간 순이익 증가율(%). Lynch's rule of thumb that a fair price is one
+ * PER point per point of growth; below 1 is cheap for the growth on offer.
+ */
+export function pegRatio(stock: Stock): number | null {
+  const per = stock.per;
+  const annual = stock.annualNetIncome;
+  if (per == null || per <= 0 || !annual) return null;
+  const [year0, year1] = annual;
+  if (year0 == null || year1 == null || year1 <= 0) return null;
+  const growthPct = (year0 / year1 - 1) * 100;
+  if (growthPct <= 0) return null;
+  return per / growthPct;
+}
+
+function withinDebtRatio(stock: Stock, maxPct: number): boolean {
+  const ratio = debtRatio(stock);
+  return ratio != null && ratio <= maxPct;
+}
+
 function matchesBuffett(stock: Stock): boolean {
-  return allPositive(stock.annualNetIncome, 5) && stock.pbr != null && stock.pbr <= 3;
+  if (!allPositive(stock.annualNetIncome, 5)) return false;
+  if (stock.pbr == null || stock.pbr > 3) return false;
+  if (!withinDebtRatio(stock, 100)) return false;
+
+  // ROE 최근 3개년 평균 15% 이상, 각 연도 10% 이상.
+  const roes = [0, 1, 2].map((offset) => returnOnEquity(stock, offset));
+  if (roes.some((value) => value == null || value < 10)) return false;
+  const averageRoe = (roes as number[]).reduce((sum, value) => sum + value, 0) / roes.length;
+  if (averageRoe < 15) return false;
+
+  // 영업이익률 최근 5개년 평균 10% 이상, 표준편차가 평균의 20% 이내.
+  const margins: number[] = [];
+  for (let i = 0; i < 5; i++) {
+    const profit = stock.annualOperatingProfit?.[i];
+    const revenue = stock.annualRevenue?.[i];
+    if (profit == null || revenue == null || revenue <= 0) return false;
+    margins.push((profit / revenue) * 100);
+  }
+  const meanMargin = margins.reduce((sum, value) => sum + value, 0) / margins.length;
+  if (meanMargin < 10) return false;
+  const variance =
+    margins.reduce((sum, value) => sum + (value - meanMargin) ** 2, 0) / margins.length;
+  return Math.sqrt(variance) <= meanMargin * 0.2;
 }
 
 function matchesLynch(stock: Stock): boolean {
-  const profitGrowth = yoyGrowthPct(stock.quarterlyNetIncome);
+  // 최근 4분기 중 3개 이상에서 순이익이 전년동기 대비 15% 이상 - a single good
+  // quarter isn't growth, which is the whole point of the "3 of 4" wording.
+  if (quartersGrowingAtLeast(stock.quarterlyNetIncome, 15, 4) < 3) return false;
   const revenueGrowth = yoyGrowthPct(stock.quarterlyRevenue);
-  return profitGrowth != null && profitGrowth >= 15 && revenueGrowth != null && revenueGrowth >= 10;
+  if (revenueGrowth == null || revenueGrowth < 10) return false;
+  if (!withinDebtRatio(stock, 100)) return false;
+  const peg = pegRatio(stock);
+  return peg != null && peg < 1;
 }
 
 const ONEIL_MAX_LISTED_SHARES = 100_000_000;
@@ -183,6 +276,19 @@ function matchesOneil(stock: Stock): boolean {
   return recent.reduce((sum, value) => sum + value, 0) > 0;
 }
 
+/**
+ * 마법공식은 시장 전체 순위 합산이라 종목 하나만 봐서는 판정할 수 없어
+ * 수집 단계에서 magicFormulaRank(1-99, 클수록 우수)를 계산해 둔다. 여기서는
+ * 상위 구간과 초소형주 제외만 확인한다.
+ */
+const GREENBLATT_MIN_RANK = 97;
+const GREENBLATT_MIN_MARKET_CAP = 100_000_000_000;
+
+function matchesGreenblatt(stock: Stock): boolean {
+  if (stock.marketCap < GREENBLATT_MIN_MARKET_CAP) return false;
+  return stock.magicFormulaRank != null && stock.magicFormulaRank >= GREENBLATT_MIN_RANK;
+}
+
 /** All eight trend-template checks - including RS >= 70 - must pass. */
 const MINERVINI_TREND_SCORE = 8;
 
@@ -191,9 +297,24 @@ function matchesMinervini(stock: Stock): boolean {
 }
 
 function matchesGraham(stock: Stock): boolean {
-  return (
-    stock.pbr != null && stock.pbr < 1 && stock.per != null && stock.per > 0 && stock.per <= 10
-  );
+  if (stock.pbr == null || stock.pbr >= 1) return false;
+  if (stock.per == null || stock.per <= 0 || stock.per > 10) return false;
+
+  const ratio = currentRatio(stock);
+  if (ratio == null || ratio < 200) return false;
+
+  // 장기부채가 순유동자산(유동자산 - 유동부채) 이하.
+  const currentAssets = latest(stock.annualCurrentAssets);
+  const currentLiabilities = latest(stock.annualCurrentLiabilities);
+  const longTermDebt = latest(stock.annualNonCurrentLiabilities);
+  if (currentAssets == null || currentLiabilities == null || longTermDebt == null) return false;
+  const netCurrentAssets = currentAssets - currentLiabilities;
+  if (longTermDebt > netCurrentAssets) return false;
+
+  // NCAV: 시가총액 <= (유동자산 - 총부채) x 0.67.
+  const totalLiabilities = latest(stock.annualTotalLiabilities);
+  if (totalLiabilities == null) return false;
+  return stock.marketCap <= (currentAssets - totalLiabilities) * 0.67;
 }
 
 const MATCHERS: Record<InvestorPreset, (stock: Stock) => boolean> = {
@@ -202,9 +323,7 @@ const MATCHERS: Record<InvestorPreset, (stock: Stock) => boolean> = {
   oneil: matchesOneil,
   graham: matchesGraham,
   minervini: matchesMinervini,
-  // Needs EBIT/EV and ROC, which the feed doesn't carry yet. Never selectable
-  // in the UI, and a no-match here would be misleading.
-  greenblatt: () => false,
+  greenblatt: matchesGreenblatt,
 };
 
 export function matchesPreset(stock: Stock, preset: InvestorPreset): boolean {

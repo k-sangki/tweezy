@@ -38,13 +38,19 @@ def weighted_return(closes: Sequence[float]) -> float | None:
 
 
 def percentile_scores(raw_scores: Mapping[str, float]) -> dict[str, int]:
-    """Map raw values to 0-99 percentile scores; ties receive the same score."""
+    """Map raw values to 1-99 percentile scores; ties receive the same score.
+
+    IBD publishes the rating on a 1-99 scale, so the weakest stock scores 1
+    rather than 0. Callers rank within one market at a time - the score is
+    meant to say how a stock did against its peers, and KOSPI and KOSDAQ are
+    different peer groups.
+    """
     if not raw_scores:
         return {}
     ordered = sorted(raw_scores.values())
     count = len(ordered)
     return {
-        ticker: min(99, max(0, floor(100 * bisect_left(ordered, value) / count)))
+        ticker: min(99, max(1, floor(100 * bisect_left(ordered, value) / count)))
         for ticker, value in raw_scores.items()
     }
 
