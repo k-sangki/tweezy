@@ -9,6 +9,7 @@ import {
   type Market,
   type ProfitTurnaroundMode,
   type ScreenerFilter,
+  type TechnicalPattern,
 } from '@tweezy/core';
 import { useTheme, radius, spacing, type Palette } from '../lib/theme';
 import { useScreener } from '../lib/ScreenerContext';
@@ -62,12 +63,14 @@ const PRICE_FLOOR_OPTIONS = Array.from({ length: 10 }, (_, i) => (i + 1) * 1000)
   value: won,
 }));
 
-const TECHNICAL_PATTERNS = [
-  { key: 'breakoutImminent', label: '전고점 돌파 임박' },
-  { key: 'breakoutDone', label: '전고점 돌파 완료' },
-  { key: 'volumeDryUp', label: '거래량 마름' },
-  { key: 'boxRange', label: '박스권 갇힘' },
+const TECHNICAL_PATTERNS: { key: TechnicalPattern; label: string; note: string }[] = [
+  { key: 'breakoutImminent', label: '전고점 돌파 임박', note: '52주 고점의 90% 이상, 아직 신고가는 아님' },
+  { key: 'breakoutDone', label: '전고점 돌파 완료', note: '오늘 52주 신고가를 경신' },
+  { key: 'volumeDryUp', label: '거래량 마름', note: '10일 평균 거래량이 50일 평균의 70% 이하' },
+  { key: 'boxRange', label: '박스권 갇힘', note: '최근 20일 고저 폭 15% 이내에서 횡보' },
 ];
+
+const RS_RATING_OPTIONS = [70, 80, 90].map((n) => ({ label: String(n), value: n }));
 
 interface FiltersState {
   markets: Market[];
@@ -83,6 +86,8 @@ interface FiltersState {
   netLoss: { on: boolean };
   operatingLoss: { on: boolean };
   priceFloor: { on: boolean; value: number };
+  rsRating: { on: boolean; value: number };
+  patterns: TechnicalPattern[];
   presets: InvestorPreset[];
 }
 
@@ -100,6 +105,8 @@ const INITIAL_STATE: FiltersState = {
   netLoss: { on: true },
   operatingLoss: { on: true },
   priceFloor: { on: false, value: 5000 },
+  rsRating: { on: false, value: 80 },
+  patterns: [],
   presets: [],
 };
 
@@ -115,16 +122,15 @@ type RowKey =
   | 'marketCap'
   | 'netLoss'
   | 'operatingLoss'
-  | 'priceFloor';
+  | 'priceFloor'
+  | 'rsRating';
 
 const GROUP_ROWS: Record<string, RowKey[]> = {
   valuation: ['dividend'],
   fundamental: ['turnaround', 'netIncome', 'revenue'],
   flow: ['institutional', 'foreign', 'pension'],
   short: ['shortInterest'],
-  marketCap: ['marketCap'],
   loss: ['netLoss', 'operatingLoss'],
-  price: ['priceFloor'],
 };
 
 const AVAILABLE_PRESETS = INVESTOR_PRESETS.filter((preset) => PRESET_INFO[preset].available);
@@ -157,6 +163,8 @@ export function ScreenerFilters() {
       excludeQuarterlyNetLoss: state.netLoss.on || undefined,
       excludeQuarterlyOperatingLoss: state.operatingLoss.on || undefined,
       excludePriceAtOrBelow: state.priceFloor.on ? state.priceFloor.value : undefined,
+      minRsRating: state.rsRating.on ? state.rsRating.value : undefined,
+      technicalPatterns: state.patterns.length > 0 ? state.patterns : undefined,
       presets: state.presets.length > 0 ? state.presets : undefined,
     };
     setFilter(next);
@@ -187,6 +195,14 @@ export function ScreenerFilters() {
       markets: current.markets.includes(market)
         ? current.markets.filter((item) => item !== market)
         : [...current.markets, market],
+    }));
+
+  const togglePattern = (pattern: TechnicalPattern) =>
+    setState((current) => ({
+      ...current,
+      patterns: current.patterns.includes(pattern)
+        ? current.patterns.filter((item) => item !== pattern)
+        : [...current.patterns, pattern],
     }));
 
   const togglePreset = (preset: InvestorPreset) =>
@@ -239,26 +255,22 @@ export function ScreenerFilters() {
       </FilterGroup>
 
       <FilterGroup
-        title="중형 이상"
-        checked={groupChecked('marketCap')}
-        indeterminate={groupIndeterminate('marketCap')}
-        onCheckedChange={(checked) => toggleGroup('marketCap', checked)}
-      >
-        <FilterRow
-          label="시가총액"
-          checked={state.marketCap.on}
-          onCheckedChange={(on) => setRow('marketCap', on)}
-        >
-          <Select
-            compact
-            label="시가총액 기준"
-            options={MARKET_CAP_OPTIONS}
-            value={state.marketCap.value}
-            onChange={(value) => patch('marketCap', { value, on: true })}
-          />
-          <Text style={styles.rowText}>이상</Text>
-        </FilterRow>
-      </FilterGroup>
+        title="시가총액"
+        checked={state.marketCap.on}
+        onCheckedChange={(on) => setRow('marketCap', on)}
+        titleControls={
+          <>
+            <Select
+              compact
+              label="시가총액 기준"
+              options={MARKET_CAP_OPTIONS}
+              value={state.marketCap.value}
+              onChange={(value) => patch('marketCap', { value, on: true })}
+            />
+            <Text style={styles.titleTail}>이상</Text>
+          </>
+        }
+      />
 
       <FilterGroup
         title="최근 분기 적자 기업 제외"
@@ -280,26 +292,22 @@ export function ScreenerFilters() {
       </FilterGroup>
 
       <FilterGroup
-        title="주가 5,000원 이하 제외"
-        checked={groupChecked('price')}
-        indeterminate={groupIndeterminate('price')}
-        onCheckedChange={(checked) => toggleGroup('price', checked)}
-      >
-        <FilterRow
-          label="주가"
-          checked={state.priceFloor.on}
-          onCheckedChange={(on) => setRow('priceFloor', on)}
-        >
-          <Select
-            compact
-            label="제외할 주가 기준"
-            options={PRICE_FLOOR_OPTIONS}
-            value={state.priceFloor.value}
-            onChange={(value) => patch('priceFloor', { value, on: true })}
-          />
-          <Text style={styles.rowText}>이하 제외</Text>
-        </FilterRow>
-      </FilterGroup>
+        title="주가"
+        checked={state.priceFloor.on}
+        onCheckedChange={(on) => setRow('priceFloor', on)}
+        titleControls={
+          <>
+            <Select
+              compact
+              label="제외할 주가 기준"
+              options={PRICE_FLOOR_OPTIONS}
+              value={state.priceFloor.value}
+              onChange={(value) => patch('priceFloor', { value, on: true })}
+            />
+            <Text style={styles.titleTail}>이하 제외</Text>
+          </>
+        }
+      />
 
       <FilterGroup
         title="펀더멘털"
@@ -445,7 +453,7 @@ export function ScreenerFilters() {
                   ? pending > 0
                     ? `일부 기준만 적용 중 (${pending}개 기준은 데이터 준비 중)`
                     : undefined
-                  : '데이터 준비 중 - 기술적 지표 수집 후 활성화됩니다'
+                  : '데이터 준비 중 - 재무제표 항목이 더 수집되면 활성화됩니다'
               }
             >
               <Text style={styles.tagline}>{info.tagline}</Text>
@@ -457,12 +465,45 @@ export function ScreenerFilters() {
         })}
       </FilterGroup>
 
-      <FilterGroup title="기술적 패턴" note="데이터 준비 중">
-        <Text style={styles.groupHint}>
-          가격·거래량 히스토리 수집이 붙으면 활성화됩니다.
-        </Text>
+      <FilterGroup
+        title="IBD 상대강도"
+        checked={state.rsRating.on}
+        onCheckedChange={(on) => setRow('rsRating', on)}
+        titleControls={
+          <>
+            <Text style={styles.titleTail}>RS</Text>
+            <Select
+              compact
+              label="IBD RS Rating 하한"
+              options={RS_RATING_OPTIONS}
+              value={state.rsRating.value}
+              onChange={(value) => patch('rsRating', { value, on: true })}
+            />
+            <Text style={styles.titleTail}>이상</Text>
+          </>
+        }
+      />
+
+      <FilterGroup
+        title="기술적 패턴"
+        checked={state.patterns.length === TECHNICAL_PATTERNS.length}
+        indeterminate={state.patterns.length > 0 && state.patterns.length < TECHNICAL_PATTERNS.length}
+        onCheckedChange={(checked) =>
+          setState((current) => ({
+            ...current,
+            patterns: checked ? TECHNICAL_PATTERNS.map((pattern) => pattern.key) : [],
+          }))
+        }
+      >
+        <Text style={styles.groupHint}>여러 개를 고르면 조건을 모두 만족하는 종목만 남습니다.</Text>
         {TECHNICAL_PATTERNS.map((pattern) => (
-          <FilterRow key={pattern.key} label={pattern.label} checked={false} onCheckedChange={() => {}} unavailable />
+          <FilterRow
+            key={pattern.key}
+            label={pattern.label}
+            note={pattern.note}
+            checked={state.patterns.includes(pattern.key)}
+            onCheckedChange={() => togglePattern(pattern.key)}
+          />
         ))}
       </FilterGroup>
 
@@ -531,6 +572,11 @@ const createStyles = (colors: Palette) =>
   },
   rowText: {
     fontSize: 14,
+    color: colors.text,
+  },
+  titleTail: {
+    fontSize: 16,
+    fontWeight: '700',
     color: colors.text,
   },
   tagline: {

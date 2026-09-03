@@ -5,8 +5,14 @@ import { Checkbox } from './Checkbox';
 
 export interface FilterGroupProps {
   title: string;
+  /**
+   * Inline controls rendered next to the title, for a filter whose whole
+   * definition fits in its heading (e.g. 주가 [5,000원 v] 이하 제외). Such a
+   * group has no detail rows and no expand chevron.
+   */
+  titleControls?: ReactNode;
   defaultExpanded?: boolean;
-  children: ReactNode;
+  children?: ReactNode;
   /** When provided, shows a checkbox that turns every row in the group on/off at once. */
   checked?: boolean;
   /** Some rows on, some off. */
@@ -18,6 +24,7 @@ export interface FilterGroupProps {
 
 export function FilterGroup({
   title,
+  titleControls,
   defaultExpanded = false,
   children,
   checked,
@@ -29,14 +36,12 @@ export function FilterGroup({
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [expanded, setExpanded] = useState(defaultExpanded);
   const hasCheckbox = onCheckedChange != null;
+  const collapsible = children != null;
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Pressable
-          style={styles.titleRow}
-          onPress={() => (hasCheckbox ? onCheckedChange?.(!checked) : setExpanded((value) => !value))}
-        >
+        <View style={styles.titleRow}>
           {hasCheckbox ? (
             <Checkbox
               checked={!!checked}
@@ -44,14 +49,22 @@ export function FilterGroup({
               onPress={() => onCheckedChange?.(!checked)}
             />
           ) : null}
-          <Text style={styles.title}>{title}</Text>
+          <Pressable
+            style={styles.titlePress}
+            onPress={() => (hasCheckbox ? onCheckedChange?.(!checked) : setExpanded((value) => !value))}
+          >
+            <Text style={styles.title}>{title}</Text>
+          </Pressable>
+          {titleControls}
           {note ? <Text style={styles.note}>{note}</Text> : null}
-        </Pressable>
-        <Pressable style={styles.chevronButton} onPress={() => setExpanded((value) => !value)} hitSlop={10}>
-          <Text style={[styles.chevron, expanded && styles.chevronOpen]}>⌄</Text>
-        </Pressable>
+        </View>
+        {collapsible ? (
+          <Pressable style={styles.chevronButton} onPress={() => setExpanded((value) => !value)} hitSlop={10}>
+            <Text style={[styles.chevron, expanded && styles.chevronOpen]}>⌄</Text>
+          </Pressable>
+        ) : null}
       </View>
-      {expanded ? <View style={styles.content}>{children}</View> : null}
+      {collapsible && expanded ? <View style={styles.content}>{children}</View> : null}
     </View>
   );
 }
@@ -73,8 +86,12 @@ const createStyles = (colors: Palette) =>
       flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 10,
-      paddingVertical: 16,
+      flexWrap: 'wrap',
+      gap: 8,
+      paddingVertical: 14,
+    },
+    titlePress: {
+      paddingVertical: 2,
     },
     note: {
       fontSize: 11,

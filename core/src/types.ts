@@ -34,6 +34,26 @@ export interface Stock {
   foreignNetBuy?: (number | null)[];
   pensionNetBuy?: (number | null)[];
   shortInterestBalance?: (number | null)[];
+  /** KRX listed share count - stands in for float, which KRX doesn't publish. */
+  listedShares?: number | null;
+  /**
+   * Price/volume metrics derived from a year of daily OHLCV by the collector.
+   * `rsRating` is the IBD-style 0-99 percentile of a 63/126/189/252-day
+   * weighted return; `trendScore` is Minervini's 8-point trend template.
+   */
+  rsRating?: number | null;
+  trendScore?: number | null;
+  trendTemplate?: boolean;
+  maAligned?: boolean;
+  vcp?: boolean;
+  newHigh52?: boolean;
+  high52Pct?: number | null;
+  volumeDryUp?: boolean;
+  boxBreakout?: boolean;
+  boxRange?: boolean;
+  volumeRatio50?: number | null;
+  /** Whether this stock's own index was above its 60-day average at collection time. */
+  marketUptrend?: boolean;
 }
 
 /** 'qoq' = 직전 분기 대비 흑자전환, 'yoy' = 전년 동기 대비 흑자전환 */
@@ -82,6 +102,10 @@ export interface ScreenerFilter {
   excludeQuarterlyOperatingLoss?: boolean;
   /** Drop stocks trading at or below this price (KRW). */
   excludePriceAtOrBelow?: number;
+  /** IBD-style relative strength floor (0-99). */
+  minRsRating?: number;
+  /** Price/volume patterns a stock must show (all selected must hold). */
+  technicalPatterns?: TechnicalPattern[];
   /** Legendary-investor presets. Multiple stack (a stock must satisfy every selected preset). */
   presets?: InvestorPreset[];
 }

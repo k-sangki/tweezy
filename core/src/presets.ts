@@ -68,10 +68,10 @@ export const PRESET_INFO: Record<InvestorPreset, PresetInfo> = {
       { label: 'C: 분기 순이익 전년동기 대비 25% 이상 증가', applied: true },
       { label: 'A: 연간 순이익 3개년 연속 증가 + 연평균 25% 이상', applied: true },
       { label: 'I: 최근 4주 기관 순매수 누적 플러스', applied: true },
-      { label: 'N: 52주 신고가 -15%~0% 구간', applied: false },
-      { label: 'S: 유통주식 수 1억 주 이하', applied: false },
-      { label: 'L: RS Rating 80 이상', applied: false },
-      { label: 'M: 지수가 60일선 위', applied: false },
+      { label: 'N: 52주 신고가 -15%~0% 구간', applied: true },
+      { label: 'S: 상장주식 수 1억 주 이하 (유통주식 수 미공시로 대체)', applied: true },
+      { label: 'L: RS Rating 80 이상', applied: true },
+      { label: 'M: 지수가 60일선 위', applied: true },
     ],
   },
   graham: {
@@ -94,13 +94,13 @@ export const PRESET_INFO: Record<InvestorPreset, PresetInfo> = {
     tagline: 'VCP · 추세 템플릿',
     description:
       'US Investing Championship 우승자이자 SEPA·VCP(변동성 수축 패턴)를 정립한 트레이더입니다. 이동평균선이 정배열된 강한 추세 안에서, 변동성이 좁혀지다 거래량이 마르는 지점을 노립니다.',
-    available: false,
+    available: true,
     criteria: [
-      { label: '현재가 > 50·150·200일선, 정배열', applied: false },
-      { label: '200일선 1개월 이상 상승 추세', applied: false },
-      { label: '52주 저점 +30% 이상 / 고점 -25% 이내', applied: false },
-      { label: 'RS Rating 70 이상', applied: false },
-      { label: '거래량 마름 (10일 평균 ≤ 50일 평균의 70%)', applied: false },
+      { label: '현재가 > 50·150·200일선, 정배열', applied: true },
+      { label: '200일선 1개월 이상 상승 추세', applied: true },
+      { label: '52주 저점 +30% 이상 / 고점 -25% 이내', applied: true },
+      { label: 'RS Rating 70 이상', applied: true },
+      { label: '거래량 마름 (10일 평균 ≤ 50일 평균의 70%)', applied: true },
     ],
   },
   greenblatt: {
@@ -145,7 +145,18 @@ function matchesLynch(stock: Stock): boolean {
   return profitGrowth != null && profitGrowth >= 15 && revenueGrowth != null && revenueGrowth >= 10;
 }
 
+const ONEIL_MAX_LISTED_SHARES = 100_000_000;
+
 function matchesOneil(stock: Stock): boolean {
+  // N: within 15% of the 52-week high.
+  if (stock.high52Pct == null || stock.high52Pct < 85) return false;
+  // S: small enough share count to move on institutional demand.
+  if (stock.listedShares == null || stock.listedShares > ONEIL_MAX_LISTED_SHARES) return false;
+  // L: top fifth of the market on relative strength.
+  if (stock.rsRating == null || stock.rsRating < 80) return false;
+  // M: only buy while the stock's own index is in an uptrend.
+  if (stock.marketUptrend !== true) return false;
+
   const quarterGrowth = yoyGrowthPct(stock.quarterlyNetIncome);
   if (quarterGrowth == null || quarterGrowth < 25) return false;
 
@@ -165,6 +176,13 @@ function matchesOneil(stock: Stock): boolean {
   return recent.reduce((sum, value) => sum + value, 0) > 0;
 }
 
+/** All eight trend-template checks - including RS >= 70 - must pass. */
+const MINERVINI_TREND_SCORE = 8;
+
+function matchesMinervini(stock: Stock): boolean {
+  return stock.trendScore === MINERVINI_TREND_SCORE && stock.volumeDryUp === true;
+}
+
 function matchesGraham(stock: Stock): boolean {
   return (
     stock.pbr != null && stock.pbr < 1 && stock.per != null && stock.per > 0 && stock.per <= 10
@@ -176,9 +194,9 @@ const MATCHERS: Record<InvestorPreset, (stock: Stock) => boolean> = {
   lynch: matchesLynch,
   oneil: matchesOneil,
   graham: matchesGraham,
-  // Core criteria need price history / balance-sheet data the feed doesn't carry
-  // yet. Never selectable in the UI, and a no-match here would be misleading.
-  minervini: () => false,
+  minervini: matchesMinervini,
+  // Needs EBIT/EV and ROC, which the feed doesn't carry yet. Never selectable
+  // in the UI, and a no-match here would be misleading.
   greenblatt: () => false,
 };
 

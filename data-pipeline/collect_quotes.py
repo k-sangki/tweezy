@@ -47,6 +47,8 @@ from pykrx import stock
 
 import dart_financials
 import market_flow
+import price_history
+import rs_engine
 
 load_dotenv()  # picks up KRX_ID/KRX_PW/DART_API_KEY from a local .env, if present - never committed (see .gitignore)
 
@@ -62,6 +64,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--financials-cache", default=".cache/dart_financials.json")
     parser.add_argument("--skip-financials", action="store_true", help="skip quarterly/annual profit+revenue collection")
     parser.add_argument("--skip-flow", action="store_true", help="skip 수급/공매도 daily history collection")
+    parser.add_argument("--skip-technicals", action="store_true", help="skip price-history/RS/technical pattern collection")
+    parser.add_argument("--price-cache", default=".cache/kr_price_history.pkl")
     parser.add_argument("--flow-days", type=int, default=60, help="trading days of 수급/공매도 history to collect")
     parser.add_argument("--limit", type=int, default=None, help="only process the first N eligible tickers (for quick local testing)")
     return parser.parse_args()
@@ -161,6 +165,77 @@ def download_corp_codes(api_key: str, timeout: int = 40, retries: int = 3) -> di
     return stock_map
 
 
+def collect_technicals(
+    tickers: list[str],
+    date: str,
+    cache_path: Path,
+    ticker_market: dict[str, str],
+) -> tuple[dict[str, dict[str, Any]], dict[str, bool]]:
+    """RS ratings and price/volume patterns for every ticker with a year of history.
+
+    RS is a cross-sectional percentile, so raw weighted returns are collected for
+    the whole universe first, then ranked - a single stock's rating depends on
+    everyone else's.
+    """
+    histories = price_history.collect_histories(tickers, date, cache_path)
+
+    series_by_ticker: dict[str, tuple[list[float], list[float], list[float], list[float]]] = {}
+    raw_returns: dict[str, float] = {}
+    for ticker in tickers:
+        series = price_history.series_of(histories.get(ticker))
+        if series is None:
+            continue
+        weighted = rs_engine.weighted_return(series[0])
+        if weighted is None:
+            continue
+        series_by_ticker[ticker] = series
+        raw_returns[ticker] = weighted
+
+    ratings = rs_engine.percentile_scores(raw_returns)
+    market_uptrend = {
+        "KOSPI": bool(rs_engine.index_uptrend(price_history.index_closes(date, "1001"))),
+        "KOSDAQ": bool(rs_engine.index_uptrend(price_history.index_closes(date, "2001"))),
+    }
+    LOGGER.info(
+        "RS 산출 완료: %s개 종목 (시장 추세 KOSPI=%s, KOSDAQ=%s)",
+        len(ratings),
+        market_uptrend["KOSPI"],
+        market_uptrend["KOSDAQ"],
+    )
+
+    result: dict[str, dict[str, Any]] = {}
+    for ticker, (closes, highs, lows, volumes) in series_by_ticker.items():
+        metrics = rs_engine.price_metrics(closes, highs, lows, volumes)
+        if metrics is None:
+            continue
+        rating = ratings.get(ticker, 0)
+        score = rs_engine.trend_template_score(
+            closes[-1],
+            float(metrics["ma50"]),
+            float(metrics["ma150"]),
+            float(metrics["ma200"]),
+            float(metrics["ma200Prior"]),
+            float(metrics["low52"]),
+            float(metrics["high52"]),
+            rating,
+        )
+        result[ticker] = {
+            "rsRating": rating,
+            "trendScore": score,
+            "trendTemplate": bool(metrics["trendTemplateBase"]),
+            "maAligned": bool(metrics["maAligned"]),
+            "vcp": bool(metrics["vcp"]),
+            "newHigh52": bool(metrics["newHigh52"]),
+            "high52Pct": metrics["high52Pct"],
+            "volumeDryUp": bool(metrics["volumeDryUp"]),
+            "boxBreakout": bool(metrics["boxBreakout"]),
+            "boxRange": bool(metrics["boxRange"]),
+            "volumeRatio50": metrics["volumeRatio50"],
+            "marketUptrend": market_uptrend.get(ticker_market.get(ticker, ""), False),
+        }
+    return result, market_uptrend
+
+
 def collect_fundamentals(date: str) -> pd.DataFrame:
     return pd.concat(
         [
@@ -180,6 +255,9 @@ def main() -> None:
         cap_frame = cap_frame.head(args.limit)
     close = first_column(cap_frame, "종가", "Close").astype(float)
     market_cap = first_column(cap_frame, "시가총액", "Market Cap").astype(float)
+    # O'Neil's S factor wants float; KRX gives listed shares, which is the
+    # closest thing available here (labelled as such in the UI).
+    listed_shares = first_column(cap_frame, "상장주식수", "Listed shares").astype("int64")
 
     kospi = set(stock.get_market_ticker_list(date, market="KOSPI"))
     kosdaq = set(stock.get_market_ticker_list(date, market="KOSDAQ"))
@@ -252,6 +330,19 @@ def main() -> None:
         LOGGER.info("수급/공매도 이력 수집 시작 (최근 %s거래일)", args.flow_days)
         flow_and_short = market_flow.collect_flow_and_short_interest(date, days=args.flow_days)
 
+    eligible = [
+        str(raw)
+        for raw in cap_frame.index
+        if market_of(str(raw), kospi, kosdaq) is not None and float(close.get(str(raw), 0.0)) >= MIN_CLOSE
+    ]
+
+    ticker_market = {ticker: market_of(ticker, kospi, kosdaq) or "" for ticker in eligible}
+    technicals: dict[str, dict[str, Any]] = {}
+    market_uptrend: dict[str, bool] = {}
+    if not args.skip_technicals:
+        LOGGER.info("가격 이력/RS/기술적 지표 수집 시작: %s개 종목", len(eligible))
+        technicals, market_uptrend = collect_technicals(eligible, date, Path(args.price_cache), ticker_market)
+
     items: list[dict[str, Any]] = []
     for raw_ticker in cap_frame.index:
         ticker = str(raw_ticker)
@@ -294,6 +385,10 @@ def main() -> None:
             item.update(item_financials)
         if ticker in flow_and_short:
             item.update(flow_and_short[ticker])
+        if ticker in technicals:
+            item.update(technicals[ticker])
+        if ticker in listed_shares.index:
+            item["listedShares"] = int(listed_shares.get(ticker, 0)) or None
         items.append(item)
 
     items.sort(key=lambda item: -item["marketCap"])
@@ -304,7 +399,9 @@ def main() -> None:
         "source": "KRX adjusted OHLCV/fundamentals via pykrx"
         + (" · OpenDART corp_code" if corp_codes else "")
         + (" · OpenDART financials" if financials else "")
-        + (" · KRX flow/short-interest" if flow_and_short else ""),
+        + (" · KRX flow/short-interest" if flow_and_short else "")
+        + (" · RS/technicals" if technicals else ""),
+        "marketUptrend": market_uptrend or None,
         "items": items,
     }
 

@@ -1,5 +1,28 @@
 import { matchesPreset } from './presets';
-import type { GrowthStreakFilter, ProfitTurnaroundMode, ScreenerFilter, ShortInterestDropFilter, Stock } from './types';
+import type {
+  GrowthStreakFilter,
+  ProfitTurnaroundMode,
+  ScreenerFilter,
+  ShortInterestDropFilter,
+  Stock,
+  TechnicalPattern,
+} from './types';
+
+/** A stock is "approaching" its high once it's within 10% of it, but hasn't printed a new one. */
+const BREAKOUT_IMMINENT_MIN_PCT = 90;
+
+export function matchesTechnicalPattern(stock: Stock, pattern: TechnicalPattern): boolean {
+  switch (pattern) {
+    case 'breakoutImminent':
+      return !stock.newHigh52 && stock.high52Pct != null && stock.high52Pct >= BREAKOUT_IMMINENT_MIN_PCT;
+    case 'breakoutDone':
+      return stock.newHigh52 === true;
+    case 'volumeDryUp':
+      return stock.volumeDryUp === true;
+    case 'boxRange':
+      return stock.boxRange === true;
+  }
+}
 
 /** 'yoy' compares against the same quarter one year ago (index 4 in a most-recent-first quarterly series). */
 const YOY_QUARTER_OFFSET = 4;
@@ -110,6 +133,12 @@ export function applyFilters(stocks: Stock[], filter: ScreenerFilter): Stock[] {
       return false;
     }
     if (filter.excludePriceAtOrBelow != null && stock.price <= filter.excludePriceAtOrBelow) {
+      return false;
+    }
+    if (filter.minRsRating != null && (stock.rsRating == null || stock.rsRating < filter.minRsRating)) {
+      return false;
+    }
+    if (filter.technicalPatterns?.some((pattern) => !matchesTechnicalPattern(stock, pattern))) {
       return false;
     }
     if (filter.presets?.some((preset) => !matchesPreset(stock, preset))) {
