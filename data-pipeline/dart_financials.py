@@ -76,6 +76,10 @@ MULTI_BATCH_SIZE = 100
 REQUEST_DELAY_SECONDS = 0.25
 BACKOFF_BASE_SECONDS = 1.0
 MAX_ATTEMPTS = 4
+# DART also throttles by IP, refusing everything for a while. Once that starts,
+# each remaining job would burn its full retry ladder (~7s) for nothing, so the
+# pass gives up after this many consecutive failures and resumes next run.
+CONSECUTIVE_FAILURE_LIMIT = 30
 
 KINDS = ("revenue", "profit", "operating_profit")
 
@@ -537,6 +541,8 @@ def collect_financials(
     # A company that fails here keeps its batch-sourced figures, so failures
     # are counted and summarised rather than logged 3,000 times.
     failures: list[str] = []
+    blocked = threading.Event()
+    consecutive_baseline = [0]
     priority = [code for code in priority_codes if code in set(corp_codes)]
     upgrade_jobs = [
         (code, ref)
@@ -552,7 +558,7 @@ def collect_financials(
 
     def run_single(job: tuple[str, ReportRef]) -> None:
         code, ref = job
-        if limit_reached.is_set():
+        if limit_reached.is_set() or blocked.is_set():
             return
         try:
             extracted = fetch_single(api_key, code, *ref)
@@ -561,7 +567,11 @@ def collect_financials(
             return
         except Exception as error:  # noqa: BLE001 - one company must not sink the run
             failures.append(f"{code}/{ref[0]}-{ref[1]}: {error}")
+            if len(failures) - consecutive_baseline[0] >= CONSECUTIVE_FAILURE_LIMIT:
+                blocked.set()
             return
+        # A success means DART is answering again, so the streak restarts.
+        consecutive_baseline[0] = len(failures)
         if extracted:
             put(code, ref, extracted)
 
@@ -575,6 +585,11 @@ def collect_financials(
                     if on_progress:
                         on_progress(store)
 
+    if blocked.is_set():
+        LOGGER.warning(
+            "OpenDART가 연속 %s건 응답하지 않아 보정을 중단했습니다 - 다음 실행에서 남은 기업을 이어서 보정합니다.",
+            CONSECUTIVE_FAILURE_LIMIT,
+        )
     if failures:
         LOGGER.warning(
             "보정 %s/%s건 실패 - 해당 기업은 주요계정(당기순이익 총액) 값을 유지합니다. 예: %s",

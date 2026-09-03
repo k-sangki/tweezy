@@ -295,15 +295,17 @@ def main() -> None:
         try:
             corp_codes = download_corp_codes(dart_api_key)
             save_corp_codes_cache(corp_codes_cache_path, corp_codes)
-        except dart_financials.DailyLimitReached:
+        except Exception as error:  # noqa: BLE001
+            # DART being unavailable - a spent quota, but also a refused or
+            # dropped connection when it throttles the whole IP - must not sink
+            # a run whose 시세/수급/기술적 지표 don't depend on it. Fall back to
+            # the cached mapping and publish everything else.
             quota_spent = True
-            # Quota already spent today: fall back to the cached mapping so
-            # previously collected financials still make it into the feed, and
-            # publish fresh 시세/수급 data rather than failing the whole run.
             corp_codes = load_corp_codes_cache(corp_codes_cache_path)
             LOGGER.warning(
-                "OpenDART 일일 한도 소진 - 캐시된 corp_code %s개로 진행하고 신규 재무 수집은 건너뜁니다.",
+                "OpenDART corp_code 매핑을 받지 못해 캐시 %s개로 진행하고 신규 재무 수집은 건너뜁니다: %s",
                 len(corp_codes),
+                error,
             )
 
         if corp_codes and not args.skip_financials:
