@@ -165,8 +165,7 @@ export function hasWeakInterestCoverage(stock: Stock): boolean {
  * An unknown change is not a match: a drawdown screen has to see the fall.
  */
 export function hasDrawdown(stock: Stock, { days, minDropPct }: DrawdownFilter): boolean {
-  const change =
-    days === 20 ? stock.priceChange20d : days === 60 ? stock.priceChange60d : stock.priceChange120d;
+  const change = stock.priceChanges?.[String(days)];
   return change != null && change <= -minDropPct;
 }
 

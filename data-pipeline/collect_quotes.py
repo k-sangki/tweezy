@@ -56,6 +56,11 @@ SEOUL = ZoneInfo("Asia/Seoul")
 MIN_CLOSE = 100
 LOGGER = logging.getLogger("collect_quotes")
 
+# Windows the 낙폭과대 filter offers. Short ones dominate because the filter is
+# for finding oversold bounce candidates, not slow multi-month declines.
+# Mirrors DRAWDOWN_WINDOWS in core/src/types.ts.
+DRAWDOWN_WINDOWS = (1, 2, 3, 5, 10, 60)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -273,9 +278,10 @@ def collect_technicals(
             # Liquidity floor and 낙폭과대 both read straight off the cached
             # history, so they cost no extra requests.
             "avgTradingValue": rs_engine.average_trading_value(closes, volumes, 20),
-            "priceChange20d": rs_engine.period_return_pct(closes, 20),
-            "priceChange60d": rs_engine.period_return_pct(closes, 60),
-            "priceChange120d": rs_engine.period_return_pct(closes, 120),
+            "priceChanges": {
+                str(window): rs_engine.period_return_pct(closes, window)
+                for window in DRAWDOWN_WINDOWS
+            },
         }
     return result, market_uptrend
 

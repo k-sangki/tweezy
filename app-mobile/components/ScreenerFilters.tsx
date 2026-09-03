@@ -10,6 +10,7 @@ import {
   type ProfitTurnaroundMode,
   type ScreenerFilter,
   type TechnicalPattern,
+  DRAWDOWN_WINDOWS,
   type CapitalImpairmentLevel,
   type DrawdownWindow,
   type TrendDirection,
@@ -81,13 +82,10 @@ const TRADING_VALUE_OPTIONS = [1, 3, 5, 10, 30].map((eok) => ({
   value: eok * 100_000_000,
 }));
 
-const DRAWDOWN_WINDOW_OPTIONS: { label: string; value: DrawdownWindow }[] = [
-  { label: '20일', value: 20 },
-  { label: '60일', value: 60 },
-  { label: '120일', value: 120 },
-];
+const DRAWDOWN_WINDOW_OPTIONS: { label: string; value: DrawdownWindow }[] =
+  DRAWDOWN_WINDOWS.map((n) => ({ label: `${n}일`, value: n }));
 
-const DRAWDOWN_PCT_OPTIONS = [20, 30, 40, 50].map((n) => ({ label: `${n}%`, value: n }));
+const DRAWDOWN_PCT_OPTIONS = [5, 10, 20, 30].map((n) => ({ label: `${n}%`, value: n }));
 
 const IMPAIRMENT_OPTIONS: { label: string; value: CapitalImpairmentLevel }[] = [
   { label: '자본금까지 까먹음', value: 'partial' },
@@ -161,7 +159,7 @@ const INITIAL_STATE: FiltersState = {
   shortTrend: { on: false, direction: 'falling', days: 20 },
   marketCap: { on: false, value: 300_000_000_000 },
   tradingValue: { on: false, value: 100_000_000 },
-  drawdown: { on: false, days: 60, minDropPct: 30 },
+  drawdown: { on: false, days: 3, minDropPct: 10 },
   netLoss: { on: true },
   operatingLoss: { on: true },
   impairment: { on: false, level: 'partial' },
@@ -376,7 +374,7 @@ export function ScreenerFilters() {
 
       <FilterGroup
         title="많이 떨어진 종목"
-        note="고른 기간에 그만큼 이상 떨어진 종목만"
+        note="짧게 급락한 종목을 찾을 때"
         checked={state.drawdown.on}
         onCheckedChange={(on) => setRow('drawdown', on)}
         titleControls={

@@ -87,10 +87,12 @@ export interface Stock {
    * 종가 x 거래량 - the adjusted OHLCV feed carries no 거래대금 column.
    */
   avgTradingValue?: number | null;
-  /** Percent price change over the last 20 / 60 / 120 trading days. */
-  priceChange20d?: number | null;
-  priceChange60d?: number | null;
-  priceChange120d?: number | null;
+  /**
+   * Percent price change over N trading days, keyed by N as a string.
+   * A map rather than named fields because the set of windows is a product
+   * decision that changes; see DRAWDOWN_WINDOWS.
+   */
+  priceChanges?: Record<string, number | null>;
   /**
    * Whether this stock's own index was above its 60-day average at collection
    * time. null when the index couldn't be judged - distinct from a measured
@@ -143,8 +145,13 @@ export type TechnicalPattern = 'breakoutImminent' | 'breakoutDone' | 'volumeDryU
  */
 export type CapitalImpairmentLevel = 'full' | 'partial';
 
-/** Trading days a drawdown is measured over. */
-export type DrawdownWindow = 20 | 60 | 120;
+/**
+ * Trading days a drawdown is measured over. Weighted towards short windows:
+ * the filter exists to find stocks sold off hard enough to bounce, not ones
+ * that have simply drifted down for half a year.
+ */
+export const DRAWDOWN_WINDOWS = [1, 2, 3, 5, 10, 60] as const;
+export type DrawdownWindow = (typeof DRAWDOWN_WINDOWS)[number];
 
 export interface DrawdownFilter {
   days: DrawdownWindow;
