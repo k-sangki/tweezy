@@ -632,7 +632,7 @@ export function ScreenerFilters() {
       </FilterGroup>
 
       <FilterGroup
-        title="투자 대가 프리셋"
+        title="투자 대가들의 안목"
         checked={AVAILABLE_PRESETS.every((preset) => state.presets.includes(preset))}
         indeterminate={state.presets.length > 0 && state.presets.length < AVAILABLE_PRESETS.length}
         onCheckedChange={(checked) =>
