@@ -477,7 +477,7 @@ export function ScreenerFilters() {
       />
 
       <FilterGroup
-        title="기업 기초체력"
+        title="돈 버는 기세가 남다른 '성장형 알짜 기업'"
         checked={groupChecked('fundamental')}
         indeterminate={groupIndeterminate('fundamental')}
         onCheckedChange={(checked) => toggleGroup('fundamental', checked)}
