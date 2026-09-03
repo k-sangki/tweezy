@@ -22,8 +22,10 @@ export interface Stock {
    */
   quarterlyNetIncome?: (number | null)[];
   quarterlyRevenue?: (number | null)[];
+  quarterlyOperatingProfit?: (number | null)[];
   annualNetIncome?: (number | null)[];
   annualRevenue?: (number | null)[];
+  annualOperatingProfit?: (number | null)[];
   /**
    * Daily net-buy volume by investor type and daily short-interest
    * balance (shares), most recent trading day first, up to ~60 days.
@@ -72,6 +74,14 @@ export interface ScreenerFilter {
   foreignNetBuyDays?: number;
   pensionNetBuyDays?: number;
   shortInterestDrop?: ShortInterestDropFilter;
+  /**
+   * Drop stocks whose most recent quarter was a loss. Unknown financials are
+   * kept, not dropped - an exclusion can't be justified without the data.
+   */
+  excludeQuarterlyNetLoss?: boolean;
+  excludeQuarterlyOperatingLoss?: boolean;
+  /** Drop stocks trading at or below this price (KRW). */
+  excludePriceAtOrBelow?: number;
   /** Legendary-investor presets. Multiple stack (a stock must satisfy every selected preset). */
   presets?: InvestorPreset[];
 }

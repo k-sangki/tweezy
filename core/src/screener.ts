@@ -44,6 +44,15 @@ export function hasConsecutiveNetBuy(series: (number | null)[] | undefined, days
   return true;
 }
 
+/**
+ * True only when the most recent period is a confirmed loss. An unknown value
+ * returns false so an exclusion filter doesn't drop names it can't judge.
+ */
+export function isLatestPeriodLoss(series: (number | null)[] | undefined): boolean {
+  const latest = series?.[0];
+  return latest != null && latest < 0;
+}
+
 export function hasShortInterestDrop(
   series: (number | null)[] | undefined,
   { daysAgo, minDropPct }: ShortInterestDropFilter,
@@ -92,6 +101,15 @@ export function applyFilters(stocks: Stock[], filter: ScreenerFilter): Stock[] {
       return false;
     }
     if (filter.shortInterestDrop && !hasShortInterestDrop(stock.shortInterestBalance, filter.shortInterestDrop)) {
+      return false;
+    }
+    if (filter.excludeQuarterlyNetLoss && isLatestPeriodLoss(stock.quarterlyNetIncome)) {
+      return false;
+    }
+    if (filter.excludeQuarterlyOperatingLoss && isLatestPeriodLoss(stock.quarterlyOperatingProfit)) {
+      return false;
+    }
+    if (filter.excludePriceAtOrBelow != null && stock.price <= filter.excludePriceAtOrBelow) {
       return false;
     }
     if (filter.presets?.some((preset) => !matchesPreset(stock, preset))) {

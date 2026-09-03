@@ -210,8 +210,13 @@ def main() -> None:
         if corp_codes and not args.skip_financials:
             financials_cache_path = Path(args.financials_cache)
             financials = dart_financials.load_cache(financials_cache_path, now) or {}
+            # Top up entries cached before a field existed, rather than skipping
+            # any company that has *some* data - otherwise a newly added metric
+            # would never reach companies already in the cache.
             corp_codes_needing_financials = [
-                code for ticker, code in corp_codes.items() if ticker in market_cap.index and code not in financials
+                code
+                for ticker, code in corp_codes.items()
+                if ticker in market_cap.index and dart_financials.needs_collection(financials.get(code))
             ]
             if corp_codes_needing_financials and quota_spent:
                 LOGGER.info(

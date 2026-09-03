@@ -52,6 +52,16 @@ const SHORT_DROP_PCT_OPTIONS: { label: string; value: 5 | 10 | 15 | 20 }[] = [5,
   value: n as 5 | 10 | 15 | 20,
 }));
 
+const MARKET_CAP_OPTIONS = [1000, 2000, 3000, 4000, 5000].map((eok) => ({
+  label: `${eok.toLocaleString('ko-KR')}억`,
+  value: eok * 100_000_000,
+}));
+
+const PRICE_FLOOR_OPTIONS = Array.from({ length: 10 }, (_, i) => (i + 1) * 1000).map((won) => ({
+  label: `${won.toLocaleString('ko-KR')}원`,
+  value: won,
+}));
+
 const TECHNICAL_PATTERNS = [
   { key: 'breakoutImminent', label: '전고점 돌파 임박' },
   { key: 'breakoutDone', label: '전고점 돌파 완료' },
@@ -69,6 +79,10 @@ interface FiltersState {
   foreign: { on: boolean; days: number };
   pension: { on: boolean; days: number };
   shortInterest: { on: boolean; daysAgo: 1 | 2 | 3 | 4 | 5; minDropPct: 5 | 10 | 15 | 20 };
+  marketCap: { on: boolean; value: number };
+  netLoss: { on: boolean };
+  operatingLoss: { on: boolean };
+  priceFloor: { on: boolean; value: number };
   presets: InvestorPreset[];
 }
 
@@ -82,16 +96,35 @@ const INITIAL_STATE: FiltersState = {
   foreign: { on: false, days: 5 },
   pension: { on: false, days: 5 },
   shortInterest: { on: false, daysAgo: 5, minDropPct: 10 },
+  marketCap: { on: false, value: 300_000_000_000 },
+  netLoss: { on: true },
+  operatingLoss: { on: true },
+  priceFloor: { on: false, value: 5000 },
   presets: [],
 };
 
-type RowKey = 'dividend' | 'turnaround' | 'netIncome' | 'revenue' | 'institutional' | 'foreign' | 'pension' | 'shortInterest';
+type RowKey =
+  | 'dividend'
+  | 'turnaround'
+  | 'netIncome'
+  | 'revenue'
+  | 'institutional'
+  | 'foreign'
+  | 'pension'
+  | 'shortInterest'
+  | 'marketCap'
+  | 'netLoss'
+  | 'operatingLoss'
+  | 'priceFloor';
 
 const GROUP_ROWS: Record<string, RowKey[]> = {
   valuation: ['dividend'],
   fundamental: ['turnaround', 'netIncome', 'revenue'],
   flow: ['institutional', 'foreign', 'pension'],
   short: ['shortInterest'],
+  marketCap: ['marketCap'],
+  loss: ['netLoss', 'operatingLoss'],
+  price: ['priceFloor'],
 };
 
 const AVAILABLE_PRESETS = INVESTOR_PRESETS.filter((preset) => PRESET_INFO[preset].available);
@@ -120,6 +153,10 @@ export function ScreenerFilters() {
       shortInterestDrop: state.shortInterest.on
         ? { daysAgo: state.shortInterest.daysAgo, minDropPct: state.shortInterest.minDropPct }
         : undefined,
+      minMarketCap: state.marketCap.on ? state.marketCap.value : undefined,
+      excludeQuarterlyNetLoss: state.netLoss.on || undefined,
+      excludeQuarterlyOperatingLoss: state.operatingLoss.on || undefined,
+      excludePriceAtOrBelow: state.priceFloor.on ? state.priceFloor.value : undefined,
       presets: state.presets.length > 0 ? state.presets : undefined,
     };
     setFilter(next);
@@ -198,6 +235,69 @@ export function ScreenerFilters() {
             onChange={(value) => patch('dividend', { value, on: true })}
           />
           <Text style={styles.rowText}>이상</Text>
+        </FilterRow>
+      </FilterGroup>
+
+      <FilterGroup
+        title="중형 이상"
+        checked={groupChecked('marketCap')}
+        indeterminate={groupIndeterminate('marketCap')}
+        onCheckedChange={(checked) => toggleGroup('marketCap', checked)}
+      >
+        <FilterRow
+          label="시가총액"
+          checked={state.marketCap.on}
+          onCheckedChange={(on) => setRow('marketCap', on)}
+        >
+          <Select
+            compact
+            label="시가총액 기준"
+            options={MARKET_CAP_OPTIONS}
+            value={state.marketCap.value}
+            onChange={(value) => patch('marketCap', { value, on: true })}
+          />
+          <Text style={styles.rowText}>이상</Text>
+        </FilterRow>
+      </FilterGroup>
+
+      <FilterGroup
+        title="최근 분기 적자 기업 제외"
+        checked={groupChecked('loss')}
+        indeterminate={groupIndeterminate('loss')}
+        onCheckedChange={(checked) => toggleGroup('loss', checked)}
+      >
+        <FilterRow
+          label="순이익 적자"
+          checked={state.netLoss.on}
+          onCheckedChange={(on) => setRow('netLoss', on)}
+        />
+        <FilterRow
+          label="영업이익 적자"
+          checked={state.operatingLoss.on}
+          onCheckedChange={(on) => setRow('operatingLoss', on)}
+        />
+        <Text style={styles.groupHint}>재무 데이터가 없는 종목은 제외하지 않습니다.</Text>
+      </FilterGroup>
+
+      <FilterGroup
+        title="주가 5,000원 이하 제외"
+        checked={groupChecked('price')}
+        indeterminate={groupIndeterminate('price')}
+        onCheckedChange={(checked) => toggleGroup('price', checked)}
+      >
+        <FilterRow
+          label="주가"
+          checked={state.priceFloor.on}
+          onCheckedChange={(on) => setRow('priceFloor', on)}
+        >
+          <Select
+            compact
+            label="제외할 주가 기준"
+            options={PRICE_FLOOR_OPTIONS}
+            value={state.priceFloor.value}
+            onChange={(value) => patch('priceFloor', { value, on: true })}
+          />
+          <Text style={styles.rowText}>이하 제외</Text>
         </FilterRow>
       </FilterGroup>
 

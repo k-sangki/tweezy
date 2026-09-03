@@ -63,7 +63,27 @@ ACCOUNT_DEFINITIONS: dict[str, tuple[tuple[str, ...], tuple[str, ...], set[str]]
         ("지배기업소유주지분순이익", "당기순이익", "반기순이익", "분기순이익"),
         {"IS", "CIS"},
     ),
+    "operating_profit": (
+        ("ProfitLossFromOperatingActivities", "OperatingIncomeLoss"),
+        ("영업이익", "영업손익"),
+        {"IS", "CIS"},
+    ),
 }
+
+# Every key collect_one() produces. Used to spot cache entries written before a
+# new field existed, so they get topped up instead of skipped on resume.
+EXPECTED_KEYS = (
+    "quarterlyNetIncome",
+    "quarterlyRevenue",
+    "quarterlyOperatingProfit",
+    "annualNetIncome",
+    "annualRevenue",
+    "annualOperatingProfit",
+)
+
+
+def needs_collection(cached: dict[str, list[float | None]] | None) -> bool:
+    return cached is None or any(key not in cached for key in EXPECTED_KEYS)
 
 
 def parse_amount(value: Any) -> float | None:
@@ -216,15 +236,26 @@ class DartFinancialsClient:
         year, quarter = latest_quarter(now)
         quarters = _last_n_quarters(year, quarter, 5)
 
+        # Each account is pulled from reports already fetched for this company
+        # (_request_statement memoises per report), so adding a kind costs no
+        # extra API calls - only more parsing of the same rows.
         result: dict[str, list[float | None]] = {}
-        for kind, key in (("profit", "quarterlyNetIncome"), ("revenue", "quarterlyRevenue")):
+        for kind, key in (
+            ("profit", "quarterlyNetIncome"),
+            ("revenue", "quarterlyRevenue"),
+            ("operating_profit", "quarterlyOperatingProfit"),
+        ):
             result[key] = [self._standalone_quarter_amount(corp_code, qy, qq, kind) for qy, qq in quarters]
 
         # Annual series covers fiscal years already fully reported - the year
         # before the latest quarter's year if that quarter isn't Q4 (annual
         # report for the current year doesn't exist yet), otherwise that year.
         latest_complete_year = year if quarter == 4 else year - 1
-        for kind, key in (("profit", "annualNetIncome"), ("revenue", "annualRevenue")):
+        for kind, key in (
+            ("profit", "annualNetIncome"),
+            ("revenue", "annualRevenue"),
+            ("operating_profit", "annualOperatingProfit"),
+        ):
             result[key] = self._annual_series(corp_code, latest_complete_year, kind)
 
         return result
