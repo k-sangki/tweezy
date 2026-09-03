@@ -258,9 +258,14 @@ def main() -> None:
         per = pbr = dividend_yield = None
         if ticker in fundamentals.index:
             row = fundamentals.loc[ticker]
+            # KRX reports 0 for PER/PBR when the ratio isn't meaningful (no
+            # earnings, etc.), so 0 there really is "no value". A 0 dividend
+            # yield is different: it's a fact about a company that pays nothing,
+            # and collapsing it to null wrongly drops those names from a
+            # "배당수익률 0% 이상" screen.
             per = float(row["PER"]) or None
             pbr = float(row["PBR"]) or None
-            dividend_yield = float(row["DIV"]) or None
+            dividend_yield = float(row["DIV"])
 
         corp_code = corp_codes.get(ticker)
         item_financials = financials.get(corp_code) if corp_code else None

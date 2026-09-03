@@ -63,8 +63,12 @@ export function applyFilters(stocks: Stock[], filter: ScreenerFilter): Stock[] {
     if (filter.maxMarketCap != null && stock.marketCap > filter.maxMarketCap) return false;
     if (filter.minPbr != null && (stock.pbr == null || stock.pbr < filter.minPbr)) return false;
     if (filter.maxPbr != null && (stock.pbr == null || stock.pbr > filter.maxPbr)) return false;
+    // A 0% floor is not a constraint - it must not drop names just because
+    // their yield is unknown, or "0% 이상" would silently exclude every
+    // non-dividend-payer.
     if (
       filter.minDividendYield != null &&
+      filter.minDividendYield > 0 &&
       (stock.dividendYield == null || stock.dividendYield < filter.minDividendYield)
     ) {
       return false;
