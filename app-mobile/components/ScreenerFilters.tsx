@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   INVESTOR_PRESETS,
@@ -10,7 +10,7 @@ import {
   type ProfitTurnaroundMode,
   type ScreenerFilter,
 } from '@tweezy/core';
-import { colors, radius, spacing } from '../lib/theme';
+import { useTheme, radius, spacing, type Palette } from '../lib/theme';
 import { useScreener } from '../lib/ScreenerContext';
 import { Checkbox } from './Checkbox';
 import { FilterGroup } from './FilterGroup';
@@ -97,6 +97,8 @@ const GROUP_ROWS: Record<string, RowKey[]> = {
 const AVAILABLE_PRESETS = INVESTOR_PRESETS.filter((preset) => PRESET_INFO[preset].available);
 
 export function ScreenerFilters() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { setFilter } = useScreener();
   const [state, setState] = useState<FiltersState>(INITIAL_STATE);
   const [infoPreset, setInfoPreset] = useState<InvestorPreset | null>(null);
@@ -381,6 +383,8 @@ export function ScreenerFilters() {
 }
 
 function PresetInfoSheet({ preset }: { preset: InvestorPreset }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const info = PRESET_INFO[preset];
   return (
     <View>
@@ -403,7 +407,8 @@ function PresetInfoSheet({ preset }: { preset: InvestorPreset }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Palette) =>
+  StyleSheet.create({
   container: {
     paddingTop: spacing.md,
   },

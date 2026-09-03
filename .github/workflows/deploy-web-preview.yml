@@ -36,6 +36,12 @@ jobs:
       - run: npx expo export --platform web --output-dir dist
         working-directory: app-mobile
 
+      # The export is a single-page bundle, but GitHub Pages has no SPA
+      # fallback - refreshing on /tweezy/screener would 404. Serving the same
+      # document as 404.html lets the router pick the route up client-side.
+      - run: cp dist/index.html dist/404.html
+        working-directory: app-mobile
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: app-mobile/dist

@@ -1,9 +1,12 @@
 import { useRouter } from 'expo-router';
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, radius, spacing } from '../lib/theme';
+import { useTheme, radius, spacing, type Palette } from '../lib/theme';
 
 export default function TitleScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   return (
     <View style={styles.container}>
@@ -18,38 +21,39 @@ export default function TitleScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.lg,
-  },
-  brand: {
-    alignItems: 'center',
-    marginBottom: spacing.xl,
-  },
-  title: {
-    fontSize: 40,
-    fontWeight: '800',
-    color: colors.text,
-    letterSpacing: -1,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: colors.textMuted,
-    marginTop: spacing.sm,
-  },
-  button: {
-    paddingVertical: 16,
-    paddingHorizontal: 40,
-    borderRadius: radius.md,
-    backgroundColor: colors.accent,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-});
+const createStyles = (colors: Palette) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: spacing.lg,
+    },
+    brand: {
+      alignItems: 'center',
+      marginBottom: spacing.xl,
+    },
+    title: {
+      fontSize: 40,
+      fontWeight: '800',
+      color: colors.text,
+      letterSpacing: -1,
+    },
+    subtitle: {
+      fontSize: 15,
+      color: colors.textMuted,
+      marginTop: spacing.sm,
+    },
+    button: {
+      paddingVertical: 16,
+      paddingHorizontal: 40,
+      borderRadius: radius.md,
+      backgroundColor: colors.accent,
+    },
+    buttonText: {
+      color: '#fff',
+      fontSize: 16,
+      fontWeight: '700',
+    },
+  });

@@ -1,8 +1,8 @@
 import { useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { DartClient, DartApiError, type Disclosure } from '@tweezy/core';
-import { colors, radius, spacing } from '../../lib/theme';
+import { useTheme, radius, spacing, type Palette } from '../../lib/theme';
 import { sessionChangeLabel } from '../../lib/sessionLabel';
 import { useScreener } from '../../lib/ScreenerContext';
 
@@ -53,6 +53,8 @@ function useDisclosures(corpCode: string | null | undefined) {
 
 export default function StockDetailScreen() {
   const { ticker } = useLocalSearchParams<{ ticker: string }>();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { stocks, feedDate } = useScreener();
   const stock = stocks.find((item) => item.ticker === ticker);
   const { disclosures, status, errorMessage } = useDisclosures(stock?.corpCode);
@@ -122,6 +124,8 @@ export default function StockDetailScreen() {
 }
 
 function Metric({ label, value, suffix }: { label: string; value: number | null; suffix?: string }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={styles.metric}>
       <Text style={styles.metricLabel}>{label}</Text>
@@ -131,6 +135,8 @@ function Metric({ label, value, suffix }: { label: string; value: number | null;
 }
 
 function DisclosureRow({ disclosure }: { disclosure: Disclosure }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={styles.disclosureRow}>
       <Text style={styles.disclosureReport} numberOfLines={2}>
@@ -143,7 +149,8 @@ function DisclosureRow({ disclosure }: { disclosure: Disclosure }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Palette) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -171,7 +178,7 @@ const styles = StyleSheet.create({
   changeUp: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#F04452',
+    color: colors.positive,
   },
   changeDown: {
     fontSize: 15,

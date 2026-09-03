@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, spacing } from '../lib/theme';
+import { useTheme, spacing, type Palette } from '../lib/theme';
 import { Checkbox } from './Checkbox';
 
 export interface FilterRowProps {
@@ -16,6 +16,8 @@ export interface FilterRowProps {
 }
 
 export function FilterRow({ checked, onCheckedChange, label, children, unavailable, note }: FilterRowProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const on = checked && !unavailable;
   const toggle = () => {
     if (!unavailable) onCheckedChange(!checked);
@@ -28,7 +30,7 @@ export function FilterRow({ checked, onCheckedChange, label, children, unavailab
           <Checkbox size="sm" checked={on} disabled={unavailable} onPress={toggle} />
         </View>
         <View style={[styles.content, !on && styles.contentOff]}>
-          <Pressable onPress={toggle} disabled={unavailable}>
+          <Pressable onPress={toggle} disabled={unavailable} hitSlop={{ top: 10, bottom: 10 }}>
             <Text style={styles.label}>{label}</Text>
           </Pressable>
           {children}
@@ -39,38 +41,39 @@ export function FilterRow({ checked, onCheckedChange, label, children, unavailab
   );
 }
 
-const styles = StyleSheet.create({
-  wrapper: {
-    paddingVertical: 7,
-  },
-  row: {
-    flexDirection: 'row',
-    // Top-aligned so the checkbox stays next to the first line when a row's
-    // controls wrap; the offset optically centers it against that line.
-    alignItems: 'flex-start',
-    gap: 10,
-  },
-  checkbox: {
-    marginTop: 5,
-  },
-  content: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  contentOff: {
-    opacity: 0.45,
-  },
-  label: {
-    fontSize: 14,
-    color: colors.text,
-  },
-  note: {
-    fontSize: 11,
-    color: colors.textMuted,
-    marginLeft: 27,
-    marginTop: spacing.xs,
-  },
-});
+const createStyles = (colors: Palette) =>
+  StyleSheet.create({
+    wrapper: {
+      paddingVertical: 7,
+    },
+    row: {
+      flexDirection: 'row',
+      // Top-aligned so the checkbox stays next to the first line when a row's
+      // controls wrap; the offset optically centers it against that line.
+      alignItems: 'flex-start',
+      gap: 10,
+    },
+    checkbox: {
+      marginTop: 5,
+    },
+    content: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 6,
+    },
+    contentOff: {
+      opacity: 0.45,
+    },
+    label: {
+      fontSize: 14,
+      color: colors.text,
+    },
+    note: {
+      fontSize: 11,
+      color: colors.textMuted,
+      marginLeft: 28,
+      marginTop: spacing.xs,
+    },
+  });

@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, radius, spacing } from '../lib/theme';
+import { useTheme, radius, spacing, type Palette } from '../lib/theme';
 import { Checkbox } from './Checkbox';
 
 export interface FilterGroupProps {
@@ -25,6 +25,8 @@ export function FilterGroup({
   onCheckedChange,
   note,
 }: FilterGroupProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [expanded, setExpanded] = useState(defaultExpanded);
   const hasCheckbox = onCheckedChange != null;
 
@@ -45,7 +47,7 @@ export function FilterGroup({
           <Text style={styles.title}>{title}</Text>
           {note ? <Text style={styles.note}>{note}</Text> : null}
         </Pressable>
-        <Pressable style={styles.chevronButton} onPress={() => setExpanded((value) => !value)} hitSlop={8}>
+        <Pressable style={styles.chevronButton} onPress={() => setExpanded((value) => !value)} hitSlop={10}>
           <Text style={[styles.chevron, expanded && styles.chevronOpen]}>⌄</Text>
         </Pressable>
       </View>
@@ -54,47 +56,48 @@ export function FilterGroup({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    marginBottom: spacing.sm,
-    paddingHorizontal: spacing.md,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  titleRow: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 16,
-  },
-  note: {
-    fontSize: 11,
-    color: colors.textMuted,
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  chevronButton: {
-    paddingVertical: 16,
-    paddingLeft: spacing.sm,
-  },
-  chevron: {
-    fontSize: 16,
-    color: colors.textMuted,
-    transform: [{ rotate: '0deg' }],
-  },
-  chevronOpen: {
-    transform: [{ rotate: '180deg' }],
-  },
-  content: {
-    paddingBottom: spacing.md,
-  },
-});
+const createStyles = (colors: Palette) =>
+  StyleSheet.create({
+    container: {
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      marginBottom: spacing.sm,
+      paddingHorizontal: spacing.md,
+    },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    titleRow: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingVertical: 16,
+    },
+    note: {
+      fontSize: 11,
+      color: colors.textMuted,
+    },
+    title: {
+      fontSize: 16,
+      fontWeight: '700',
+      color: colors.text,
+    },
+    chevronButton: {
+      paddingVertical: 16,
+      paddingLeft: spacing.md,
+    },
+    chevron: {
+      fontSize: 16,
+      color: colors.textMuted,
+      transform: [{ rotate: '0deg' }],
+    },
+    chevronOpen: {
+      transform: [{ rotate: '180deg' }],
+    },
+    content: {
+      paddingBottom: spacing.md,
+    },
+  });
