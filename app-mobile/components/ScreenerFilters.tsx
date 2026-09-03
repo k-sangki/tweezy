@@ -379,6 +379,9 @@ export function ScreenerFilters() {
         onCheckedChange={(on) => setRow('drawdown', on)}
         titleControls={
           <>
+            {/* Zero-height, full-width: forces everything after it onto a new
+                line within the wrapping title row, without a chevron/children. */}
+            <View style={styles.lineBreak} />
             <Select
               compact
               label="하락을 볼 기간"
@@ -386,6 +389,7 @@ export function ScreenerFilters() {
               value={state.drawdown.days}
               onChange={(days) => patch('drawdown', { days, on: true })}
             />
+            <Text style={styles.titleTail}>동안</Text>
             <Select
               compact
               label="하락률"
@@ -393,7 +397,7 @@ export function ScreenerFilters() {
               value={state.drawdown.minDropPct}
               onChange={(minDropPct) => patch('drawdown', { minDropPct, on: true })}
             />
-            <Text style={styles.titleTail}>하락</Text>
+            <Text style={styles.titleTail}>이상 하락</Text>
           </>
         }
       />
@@ -778,6 +782,10 @@ const createStyles = (colors: Palette) =>
     fontSize: 16,
     fontWeight: '700',
     color: colors.text,
+  },
+  lineBreak: {
+    width: '100%',
+    height: 0,
   },
   tagline: {
     fontSize: 12,
