@@ -111,16 +111,6 @@ AMOUNT_FIELDS = {
     "bf": "bfefrmtrm_amount",
 }
 
-EXPECTED_KEYS = (
-    "quarterlyNetIncome",
-    "quarterlyRevenue",
-    "quarterlyOperatingProfit",
-    "annualNetIncome",
-    "annualRevenue",
-    "annualOperatingProfit",
-)
-
-
 class DailyLimitReached(RuntimeError):
     """OpenDART's per-key daily request quota is exhausted (status 020).
 
@@ -317,37 +307,33 @@ def _apply(corp_reports: CorpReports, recipe: Recipe, kind: str) -> float | None
 
 
 def derive_series(corp_reports: CorpReports, now: datetime) -> dict[str, list[float | None]]:
-    """The six series the screener consumes, from cached report amounts."""
+    """The six series the screener consumes, from cached report amounts.
+
+    A series with no values at all is omitted rather than emitted as five
+    nulls: for the ~2,000 listed companies OpenDART has nothing for, that
+    would be pure payload weight, and the screener already treats an absent
+    series and an all-null one the same way.
+    """
     year, quarter = latest_quarter(now)
     quarters = _last_n_quarters(year, quarter, 5)
     _, recipes, annuals = plan(year, quarter)
-
-    result: dict[str, list[float | None]] = {}
-    for kind, key in (
-        ("profit", "quarterlyNetIncome"),
-        ("revenue", "quarterlyRevenue"),
-        ("operating_profit", "quarterlyOperatingProfit"),
-    ):
-        result[key] = [_apply(corp_reports, recipes[period], kind) for period in quarters]
-
     first, second = annuals
-    for kind, key in (
-        ("profit", "annualNetIncome"),
-        ("revenue", "annualRevenue"),
-        ("operating_profit", "annualOperatingProfit"),
+
+    series: dict[str, list[float | None]] = {}
+    for kind, quarterly_key, annual_key in (
+        ("profit", "quarterlyNetIncome", "annualNetIncome"),
+        ("revenue", "quarterlyRevenue", "annualRevenue"),
+        ("operating_profit", "quarterlyOperatingProfit", "annualOperatingProfit"),
     ):
-        result[key] = [
+        series[quarterly_key] = [_apply(corp_reports, recipes[period], kind) for period in quarters]
+        series[annual_key] = [
             _amount(corp_reports, first, kind, "t"),
             _amount(corp_reports, first, kind, "f"),
             _amount(corp_reports, first, kind, "bf"),
             _amount(corp_reports, second, kind, "f"),
             _amount(corp_reports, second, kind, "bf"),
         ]
-    return result
-
-
-def needs_collection(cached: dict[str, list[float | None]] | None) -> bool:
-    return cached is None or any(key not in cached for key in EXPECTED_KEYS)
+    return {key: values for key, values in series.items() if any(v is not None for v in values)}
 
 
 # --------------------------------------------------------------------------
