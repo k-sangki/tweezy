@@ -288,7 +288,7 @@ def main() -> None:
     dart_api_key = args.dart_api_key or os.environ.get("DART_API_KEY", "").strip()
     corp_codes: dict[str, str] = {}
     financials: dict[str, dict[str, list[float | None]]] = {}
-    quota_spent = False
+    dart_unavailable = False
     if dart_api_key:
         corp_codes_cache_path = Path(args.financials_cache).with_name("dart_corp_codes.json")
         LOGGER.info("OpenDART corp_code 매핑 다운로드 중")
@@ -300,7 +300,7 @@ def main() -> None:
             # dropped connection when it throttles the whole IP - must not sink
             # a run whose 시세/수급/기술적 지표 don't depend on it. Fall back to
             # the cached mapping and publish everything else.
-            quota_spent = True
+            dart_unavailable = True
             corp_codes = load_corp_codes_cache(corp_codes_cache_path)
             LOGGER.warning(
                 "OpenDART corp_code 매핑을 받지 못해 캐시 %s개로 진행하고 신규 재무 수집은 건너뜁니다: %s",
@@ -325,9 +325,9 @@ def main() -> None:
                 if float(market_cap.get(ticker, 0.0)) >= args.precise_financials_min_cap
             )
 
-            if quota_spent:
+            if dart_unavailable:
                 LOGGER.info(
-                    "한도 소진 상태이므로 신규 재무 수집은 건너뜁니다 (캐시된 기업 %s개 사용).",
+                    "OpenDART에 접근할 수 없어 신규 재무 수집은 건너뜁니다 (캐시된 기업 %s개 사용).",
                     len(report_store),
                 )
                 financials = {
