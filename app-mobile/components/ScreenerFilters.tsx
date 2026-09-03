@@ -10,6 +10,8 @@ import {
   type ProfitTurnaroundMode,
   type ScreenerFilter,
   type TechnicalPattern,
+  type CapitalImpairmentLevel,
+  type DrawdownWindow,
   type TrendDirection,
   type TrendWindow,
 } from '@tweezy/core';
@@ -74,6 +76,24 @@ const TECHNICAL_PATTERNS: { key: TechnicalPattern; label: string; note: string }
 
 const RS_RATING_OPTIONS = [70, 80, 90].map((n) => ({ label: String(n), value: n }));
 
+const TRADING_VALUE_OPTIONS = [1, 3, 5, 10, 30].map((eok) => ({
+  label: `${eok}억`,
+  value: eok * 100_000_000,
+}));
+
+const DRAWDOWN_WINDOW_OPTIONS: { label: string; value: DrawdownWindow }[] = [
+  { label: '20일', value: 20 },
+  { label: '60일', value: 60 },
+  { label: '120일', value: 120 },
+];
+
+const DRAWDOWN_PCT_OPTIONS = [20, 30, 40, 50].map((n) => ({ label: `${n}%`, value: n }));
+
+const IMPAIRMENT_OPTIONS: { label: string; value: CapitalImpairmentLevel }[] = [
+  { label: '자본금까지 까먹음', value: 'partial' },
+  { label: '자본이 마이너스', value: 'full' },
+];
+
 // Absolute 비중 thresholds don't work here: the market's p90 is about 1.2% and
 // its maximum about 10%, so "5% 이상" would match a dozen stocks and "10% 이상"
 // essentially one. Percentiles keep the filter meaningful as shorting activity
@@ -115,8 +135,12 @@ interface FiltersState {
   shortLevel: { on: boolean; percentile: number };
   shortTrend: { on: boolean; direction: TrendDirection; days: TrendWindow };
   marketCap: { on: boolean; value: number };
+  tradingValue: { on: boolean; value: number };
+  drawdown: { on: boolean; days: DrawdownWindow; minDropPct: number };
   netLoss: { on: boolean };
   operatingLoss: { on: boolean };
+  impairment: { on: boolean; level: CapitalImpairmentLevel };
+  interestCoverage: { on: boolean };
   priceFloor: { on: boolean; value: number };
   rsRating: { on: boolean; value: number };
   patterns: TechnicalPattern[];
@@ -136,8 +160,12 @@ const INITIAL_STATE: FiltersState = {
   shortLevel: { on: false, percentile: 90 },
   shortTrend: { on: false, direction: 'falling', days: 20 },
   marketCap: { on: false, value: 300_000_000_000 },
+  tradingValue: { on: false, value: 100_000_000 },
+  drawdown: { on: false, days: 60, minDropPct: 30 },
   netLoss: { on: true },
   operatingLoss: { on: true },
+  impairment: { on: false, level: 'partial' },
+  interestCoverage: { on: false },
   priceFloor: { on: false, value: 5000 },
   rsRating: { on: false, value: 80 },
   patterns: [],
@@ -156,8 +184,12 @@ type RowKey =
   | 'shortLevel'
   | 'shortTrend'
   | 'marketCap'
+  | 'tradingValue'
+  | 'drawdown'
   | 'netLoss'
   | 'operatingLoss'
+  | 'impairment'
+  | 'interestCoverage'
   | 'priceFloor'
   | 'rsRating';
 
@@ -167,6 +199,7 @@ const GROUP_ROWS: Record<string, RowKey[]> = {
   flow: ['institutional', 'foreign', 'pension'],
   short: ['shortLevel', 'shortTrend', 'shortInterest'],
   loss: ['netLoss', 'operatingLoss'],
+  health: ['impairment', 'interestCoverage'],
 };
 
 const AVAILABLE_PRESETS = INVESTOR_PRESETS.filter((preset) => PRESET_INFO[preset].available);
@@ -204,8 +237,14 @@ export function ScreenerFilters() {
         ? { direction: state.shortTrend.direction, days: state.shortTrend.days }
         : undefined,
       minMarketCap: state.marketCap.on ? state.marketCap.value : undefined,
+      minAvgTradingValue: state.tradingValue.on ? state.tradingValue.value : undefined,
+      drawdown: state.drawdown.on
+        ? { days: state.drawdown.days, minDropPct: state.drawdown.minDropPct }
+        : undefined,
       excludeQuarterlyNetLoss: state.netLoss.on || undefined,
       excludeQuarterlyOperatingLoss: state.operatingLoss.on || undefined,
+      excludeCapitalImpairment: state.impairment.on ? state.impairment.level : undefined,
+      excludeWeakInterestCoverage: state.interestCoverage.on || undefined,
       excludePriceAtOrBelow: state.priceFloor.on ? state.priceFloor.value : undefined,
       minRsRating: state.rsRating.on ? state.rsRating.value : undefined,
       technicalPatterns: state.patterns.length > 0 ? state.patterns : undefined,
@@ -317,6 +356,51 @@ export function ScreenerFilters() {
       />
 
       <FilterGroup
+        title="하루 거래대금"
+        note="너무 안 팔리는 종목 거르기"
+        checked={state.tradingValue.on}
+        onCheckedChange={(on) => setRow('tradingValue', on)}
+        titleControls={
+          <>
+            <Select
+              compact
+              label="하루 평균 거래대금 기준"
+              options={TRADING_VALUE_OPTIONS}
+              value={state.tradingValue.value}
+              onChange={(value) => patch('tradingValue', { value, on: true })}
+            />
+            <Text style={styles.titleTail}>이상</Text>
+          </>
+        }
+      />
+
+      <FilterGroup
+        title="많이 떨어진 종목"
+        note="고른 기간에 그만큼 이상 떨어진 종목만"
+        checked={state.drawdown.on}
+        onCheckedChange={(on) => setRow('drawdown', on)}
+        titleControls={
+          <>
+            <Select
+              compact
+              label="하락을 볼 기간"
+              options={DRAWDOWN_WINDOW_OPTIONS}
+              value={state.drawdown.days}
+              onChange={(days) => patch('drawdown', { days, on: true })}
+            />
+            <Select
+              compact
+              label="하락률"
+              options={DRAWDOWN_PCT_OPTIONS}
+              value={state.drawdown.minDropPct}
+              onChange={(minDropPct) => patch('drawdown', { minDropPct, on: true })}
+            />
+            <Text style={styles.titleTail}>하락</Text>
+          </>
+        }
+      />
+
+      <FilterGroup
         title="최근 분기 적자 기업 제외"
         checked={groupChecked('loss')}
         indeterminate={groupIndeterminate('loss')}
@@ -333,6 +417,43 @@ export function ScreenerFilters() {
           onCheckedChange={(on) => setRow('operatingLoss', on)}
         />
         <Text style={styles.groupHint}>재무 데이터가 없는 종목은 제외하지 않습니다.</Text>
+      </FilterGroup>
+
+      <FilterGroup
+        title="재무건전성 기준 미달 제외"
+        checked={groupChecked('health')}
+        indeterminate={groupIndeterminate('health')}
+        onCheckedChange={(checked) => toggleGroup('health', checked)}
+      >
+        <FilterRow
+          label="자본잠식"
+          checked={state.impairment.on}
+          onCheckedChange={(on) => setRow('impairment', on)}
+        >
+          <Select
+            compact
+            label="어디까지 제외할지"
+            options={IMPAIRMENT_OPTIONS}
+            value={state.impairment.level}
+            onChange={(level) => patch('impairment', { level, on: true })}
+          />
+        </FilterRow>
+        <FilterRow
+          label="번 돈으로 이자도 못 갚음"
+          note="영업이익 < 이자비용이 3년 연속 (이자보상배율 1 미만)"
+          checked={state.interestCoverage.on}
+          onCheckedChange={(on) => setRow('interestCoverage', on)}
+        />
+        <FilterRow
+          label="감사의견 비적정"
+          checked={false}
+          onCheckedChange={() => {}}
+          unavailable
+          note="데이터 준비 중 - 감사의견은 OpenDART 재무 API에 없어 별도 수집이 필요합니다"
+        />
+        <Text style={styles.groupHint}>
+          재무 데이터가 없는 종목은 제외하지 않습니다. 이자비용은 시가총액 3,000억 이상 종목만 수집됩니다.
+        </Text>
       </FilterGroup>
 
       <FilterGroup

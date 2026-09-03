@@ -164,6 +164,35 @@ def price_metrics(
     }
 
 
+def period_return_pct(closes: Sequence[float], window: int) -> float | None:
+    """Percent change over the last `window` trading days, or None without them."""
+    if len(closes) < window + 1:
+        return None
+    base = float(closes[-(window + 1)])
+    if base <= 0:
+        return None
+    return round((float(closes[-1]) / base - 1) * 100, 2)
+
+
+def average_trading_value(
+    closes: Sequence[float], volumes: Sequence[float], window: int
+) -> float | None:
+    """Mean daily 거래대금 over the last `window` sessions, approximated as
+    종가 x 거래량.
+
+    pykrx's adjusted OHLCV carries no 거래대금 column, and this proxy is well
+    inside the precision a liquidity floor needs - the filter separates stocks
+    trading a few million won a day from ones trading hundreds of millions,
+    not values a few percent apart.
+    """
+    if len(closes) < window or len(volumes) < window:
+        return None
+    values = [float(c) * float(v) for c, v in zip(closes[-window:], volumes[-window:])]
+    if not values:
+        return None
+    return round(fmean(values), 0)
+
+
 def index_uptrend(index_closes: Sequence[float], window: int = 60) -> bool | None:
     """Market filter: is the index above its `window`-day moving average?"""
     moving_average = average(index_closes, window)

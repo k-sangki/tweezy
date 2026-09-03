@@ -270,6 +270,12 @@ def collect_technicals(
             "boxRange": bool(metrics["boxRange"]),
             "volumeRatio50": metrics["volumeRatio50"],
             "marketUptrend": market_uptrend.get(ticker_market.get(ticker, "")),
+            # Liquidity floor and 낙폭과대 both read straight off the cached
+            # history, so they cost no extra requests.
+            "avgTradingValue": rs_engine.average_trading_value(closes, volumes, 20),
+            "priceChange20d": rs_engine.period_return_pct(closes, 20),
+            "priceChange60d": rs_engine.period_return_pct(closes, 60),
+            "priceChange120d": rs_engine.period_return_pct(closes, 120),
         }
     return result, market_uptrend
 

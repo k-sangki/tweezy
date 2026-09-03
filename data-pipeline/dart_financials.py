@@ -83,7 +83,7 @@ CONSECUTIVE_FAILURE_LIMIT = 30
 
 # Income-statement kinds carry a standalone quarterly series and an annual one;
 # balance-sheet kinds are point-in-time, so only the annual snapshots are kept.
-INCOME_KINDS = ("revenue", "profit", "operating_profit")
+INCOME_KINDS = ("revenue", "profit", "operating_profit", "interest_expense")
 BALANCE_KINDS = (
     "total_liabilities",
     "total_equity",
@@ -91,6 +91,7 @@ BALANCE_KINDS = (
     "current_liabilities",
     "noncurrent_assets",
     "noncurrent_liabilities",
+    "capital_stock",
     "cash",
 )
 KINDS = INCOME_KINDS + BALANCE_KINDS
@@ -121,12 +122,20 @@ ACCOUNT_DEFINITIONS: dict[str, tuple[tuple[str, ...], tuple[str, ...], set[str]]
         ("영업이익", "영업손익"),
         {"IS", "CIS"},
     ),
+    # Only the full-taxonomy API carries 이자비용; 주요계정 has 이자수익 but not
+    # its cost side, so the interest-coverage screen is precise-tier only.
+    "interest_expense": (
+        ("InterestExpense", "FinanceCosts"),
+        ("이자비용", "금융원가"),
+        {"IS", "CIS"},
+    ),
     "total_liabilities": (("Liabilities",), ("부채총계",), {"BS"}),
     "total_equity": (("Equity",), ("자본총계",), {"BS"}),
     "current_assets": (("CurrentAssets",), ("유동자산",), {"BS"}),
     "current_liabilities": (("CurrentLiabilities",), ("유동부채",), {"BS"}),
     "noncurrent_assets": (("NoncurrentAssets",), ("비유동자산",), {"BS"}),
     "noncurrent_liabilities": (("NoncurrentLiabilities",), ("비유동부채",), {"BS"}),
+    "capital_stock": (("IssuedCapital", "ShareCapital"), ("자본금",), {"BS"}),
     # Only the full-taxonomy API carries cash; 주요계정 stops at 유동자산.
     "cash": (
         ("CashAndCashEquivalents",),
@@ -148,16 +157,16 @@ MULTI_ACCOUNT_NAMES: dict[str, tuple[str, ...]] = {
     "current_liabilities": ("유동부채",),
     "noncurrent_assets": ("비유동자산",),
     "noncurrent_liabilities": ("비유동부채",),
-    # Absent from 주요계정 - only the priority tier's full-taxonomy fetch has it.
+    "capital_stock": ("자본금",),
+    # Absent from 주요계정 - only the priority tier's full-taxonomy fetch has them.
     "cash": (),
+    "interest_expense": (),
 }
 
 # Balance-sheet rows live under sj_div "BS"; the income statement is IS/CIS.
-MULTI_STATEMENT_DIV = {kind: ("BS" if kind in ("total_liabilities", "total_equity",
-                                               "current_assets", "current_liabilities",
-                                               "noncurrent_assets", "noncurrent_liabilities",
-                                               "cash") else "IS")
-                      for kind in MULTI_ACCOUNT_NAMES}
+MULTI_STATEMENT_DIV = {
+    kind: ("BS" if kind in BALANCE_KINDS else "IS") for kind in MULTI_ACCOUNT_NAMES
+}
 
 # Stored per report per kind. Short keys because this file holds ~16k reports.
 AMOUNT_FIELDS = {
@@ -396,6 +405,7 @@ def derive_series(corp_reports: CorpReports, now: datetime) -> dict[str, list[fl
     ):
         series[quarterly_key] = [_apply(corp_reports, recipes[period], kind) for period in quarters]
         series[annual_key] = annual_years(kind)
+    series["annualInterestExpense"] = annual_years("interest_expense")
 
     # Balance-sheet items are a snapshot at each fiscal year end, so there is no
     # standalone-quarter equivalent to derive.
@@ -406,6 +416,7 @@ def derive_series(corp_reports: CorpReports, now: datetime) -> dict[str, list[fl
         ("current_liabilities", "annualCurrentLiabilities"),
         ("noncurrent_assets", "annualNonCurrentAssets"),
         ("noncurrent_liabilities", "annualNonCurrentLiabilities"),
+        ("capital_stock", "annualCapitalStock"),
         ("cash", "annualCash"),
     ):
         series[key] = annual_years(kind)

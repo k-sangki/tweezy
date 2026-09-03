@@ -38,7 +38,10 @@ export interface Stock {
   annualCurrentLiabilities?: (number | null)[];
   annualNonCurrentAssets?: (number | null)[];
   annualNonCurrentLiabilities?: (number | null)[];
+  annualCapitalStock?: (number | null)[];
   annualCash?: (number | null)[];
+  /** 이자비용. Full-taxonomy only, so present for the precise tier alone. */
+  annualInterestExpense?: (number | null)[];
   /**
    * Joel Greenblatt's magic-formula standing: the summed rank of earnings
    * yield and return on capital across the market, as a 1-99 percentile where
@@ -79,6 +82,15 @@ export interface Stock {
   boxBreakout?: boolean;
   boxRange?: boolean;
   volumeRatio50?: number | null;
+  /**
+   * Mean daily 거래대금 (KRW) over the last 20 sessions, approximated as
+   * 종가 x 거래량 - the adjusted OHLCV feed carries no 거래대금 column.
+   */
+  avgTradingValue?: number | null;
+  /** Percent price change over the last 20 / 60 / 120 trading days. */
+  priceChange20d?: number | null;
+  priceChange60d?: number | null;
+  priceChange120d?: number | null;
   /**
    * Whether this stock's own index was above its 60-day average at collection
    * time. null when the index couldn't be judged - distinct from a measured
@@ -125,6 +137,21 @@ export type InvestorPreset = 'buffett' | 'lynch' | 'oneil' | 'graham' | 'minervi
 
 export type TechnicalPattern = 'breakoutImminent' | 'breakoutDone' | 'volumeDryUp' | 'boxRange';
 
+/**
+ * 'full' drops only 완전자본잠식 (자본총계 <= 0); 'partial' also drops
+ * 부분자본잠식 (자본총계 < 자본금), which is the earlier warning.
+ */
+export type CapitalImpairmentLevel = 'full' | 'partial';
+
+/** Trading days a drawdown is measured over. */
+export type DrawdownWindow = 20 | 60 | 120;
+
+export interface DrawdownFilter {
+  days: DrawdownWindow;
+  /** Minimum fall, as a positive percent: 30 means "down 30% or more". */
+  minDropPct: number;
+}
+
 export interface ScreenerFilter {
   markets?: Market[];
   minMarketCap?: number;
@@ -149,8 +176,19 @@ export interface ScreenerFilter {
    */
   excludeQuarterlyNetLoss?: boolean;
   excludeQuarterlyOperatingLoss?: boolean;
+  /**
+   * Drop stocks failing a financial-health check. Like the loss exclusions,
+   * a company whose data can't be judged is kept rather than dropped.
+   */
+  excludeCapitalImpairment?: CapitalImpairmentLevel;
+  /** Drop stocks whose 영업이익 hasn't covered 이자비용 for 3 straight years. */
+  excludeWeakInterestCoverage?: boolean;
   /** Drop stocks trading at or below this price (KRW). */
   excludePriceAtOrBelow?: number;
+  /** Drop stocks whose 20-day average 거래대금 is below this (KRW). */
+  minAvgTradingValue?: number;
+  /** Keep only stocks that have fallen at least this much over the window. */
+  drawdown?: DrawdownFilter;
   /** IBD-style relative strength floor (0-99). */
   minRsRating?: number;
   /** Price/volume patterns a stock must show (all selected must hold). */

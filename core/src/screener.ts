@@ -1,5 +1,7 @@
 import { matchesPreset } from './presets';
 import type {
+  CapitalImpairmentLevel,
+  DrawdownFilter,
   GrowthStreakFilter,
   ProfitTurnaroundMode,
   ScreenerFilter,
@@ -123,6 +125,51 @@ export function hasShortInterestTrend(
   return direction === 'rising' ? fittedChange > 0 : fittedChange < 0;
 }
 
+/**
+ * 자본잠식: equity has been eaten into the paid-in capital ('partial'), or
+ * wiped out entirely ('full'). Null when it can't be judged, so an exclusion
+ * doesn't drop companies whose balance sheet we don't have.
+ */
+export function capitalImpairment(stock: Stock): CapitalImpairmentLevel | null {
+  const equity = stock.annualTotalEquity?.[0];
+  if (equity == null) return null;
+  if (equity <= 0) return 'full';
+  const capital = stock.annualCapitalStock?.[0];
+  if (capital == null || capital <= 0) return null;
+  return equity < capital ? 'partial' : null;
+}
+
+/** 이자보상배율 = 영업이익 / 이자비용, for the fiscal year at `offset`. */
+export function interestCoverage(stock: Stock, offset = 0): number | null {
+  const operating = stock.annualOperatingProfit?.[offset];
+  const interest = stock.annualInterestExpense?.[offset];
+  if (operating == null || interest == null || interest <= 0) return null;
+  return operating / interest;
+}
+
+/**
+ * The 좀비기업 test: operating profit failed to cover interest three years
+ * running. Requires all three years - two bad years and one unknown is not a
+ * confirmed three-year streak.
+ */
+export function hasWeakInterestCoverage(stock: Stock): boolean {
+  for (let offset = 0; offset < 3; offset++) {
+    const coverage = interestCoverage(stock, offset);
+    if (coverage == null || coverage >= 1) return false;
+  }
+  return true;
+}
+
+/**
+ * True when the stock has fallen at least `minDropPct` over the window.
+ * An unknown change is not a match: a drawdown screen has to see the fall.
+ */
+export function hasDrawdown(stock: Stock, { days, minDropPct }: DrawdownFilter): boolean {
+  const change =
+    days === 20 ? stock.priceChange20d : days === 60 ? stock.priceChange60d : stock.priceChange120d;
+  return change != null && change <= -minDropPct;
+}
+
 export function hasShortInterestDrop(
   series: (number | null)[] | undefined,
   { daysAgo, minDropPct }: ShortInterestDropFilter,
@@ -189,7 +236,26 @@ export function applyFilters(stocks: Stock[], filter: ScreenerFilter): Stock[] {
     if (filter.excludeQuarterlyOperatingLoss && isLatestPeriodLoss(stock.quarterlyOperatingProfit)) {
       return false;
     }
+    if (filter.excludeCapitalImpairment) {
+      const level = capitalImpairment(stock);
+      // 'partial' is the looser screen: it drops both levels.
+      if (level === 'full' || (level === 'partial' && filter.excludeCapitalImpairment === 'partial')) {
+        return false;
+      }
+    }
+    if (filter.excludeWeakInterestCoverage && hasWeakInterestCoverage(stock)) {
+      return false;
+    }
     if (filter.excludePriceAtOrBelow != null && stock.price <= filter.excludePriceAtOrBelow) {
+      return false;
+    }
+    if (
+      filter.minAvgTradingValue != null &&
+      (stock.avgTradingValue == null || stock.avgTradingValue < filter.minAvgTradingValue)
+    ) {
+      return false;
+    }
+    if (filter.drawdown && !hasDrawdown(stock, filter.drawdown)) {
       return false;
     }
     if (filter.minRsRating != null && (stock.rsRating == null || stock.rsRating < filter.minRsRating)) {
