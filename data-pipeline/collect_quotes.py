@@ -61,8 +61,18 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", default="data/kr-quotes.json")
     parser.add_argument("--dart-api-key", default=None, help="defaults to $DART_API_KEY")
-    parser.add_argument("--financials-cache", default=".cache/dart_financials.json")
+    parser.add_argument("--financials-cache", default=".cache/dart_reports.json")
     parser.add_argument("--skip-financials", action="store_true", help="skip quarterly/annual profit+revenue collection")
+    parser.add_argument(
+        "--precise-financials-min-cap",
+        type=float,
+        default=300_000_000_000,
+        help=(
+            "market cap (KRW) above which financials are re-fetched with OpenDART's "
+            "single-company API, so net income is 지배주주지분 rather than 총액. "
+            "0 applies it to every company (slow, quota-heavy)."
+        ),
+    )
     parser.add_argument("--skip-flow", action="store_true", help="skip 수급/공매도 daily history collection")
     parser.add_argument("--skip-technicals", action="store_true", help="skip price-history/RS/technical pattern collection")
     parser.add_argument("--price-cache", default=".cache/kr_price_history.pkl")
@@ -269,6 +279,11 @@ def main() -> None:
     kosdaq = set(stock.get_market_ticker_list(date, market="KOSDAQ"))
     fundamentals = collect_fundamentals(date)
     change_pct = first_column(stock.get_market_ohlcv_by_ticker(date, market="ALL"), "등락률", "Change rate").astype(float)
+    # One bulk call for every 종목명. get_market_ticker_name is per-ticker, so
+    # using it in the item loop cost ~2,700 sequential requests (~20 minutes).
+    ticker_names = first_column(
+        stock.get_market_price_change_by_ticker(date, date, market="ALL"), "종목명", "Name"
+    )
 
     dart_api_key = args.dart_api_key or os.environ.get("DART_API_KEY", "").strip()
     corp_codes: dict[str, str] = {}
@@ -292,42 +307,54 @@ def main() -> None:
             )
 
         if corp_codes and not args.skip_financials:
-            financials_cache_path = Path(args.financials_cache)
-            financials = dart_financials.load_cache(financials_cache_path, now) or {}
-            # Top up entries cached before a field existed, rather than skipping
-            # any company that has *some* data - otherwise a newly added metric
-            # would never reach companies already in the cache.
-            corp_codes_needing_financials = [
+            reports_cache_path = Path(args.financials_cache)
+            report_store = dart_financials.load_reports(reports_cache_path, now)
+            listed = {
+                code: ticker for ticker, code in corp_codes.items() if ticker in market_cap.index
+            }
+            # Reports are cached per (company, year, report), so a new quarter
+            # costs one report per company rather than a full re-collection.
+            wanted_codes = sorted(listed)
+            # 지배주주지분 순이익은 단일회사 API에서만 나오고 기업당 호출이라
+            # 비싸다. 화면에서 실제로 걸러질 가능성이 높은 중형주 이상에만 적용.
+            precise_codes = sorted(
                 code
-                for ticker, code in corp_codes.items()
-                if ticker in market_cap.index and dart_financials.needs_collection(financials.get(code))
-            ]
-            if corp_codes_needing_financials and quota_spent:
+                for code, ticker in listed.items()
+                if float(market_cap.get(ticker, 0.0)) >= args.precise_financials_min_cap
+            )
+
+            if quota_spent:
                 LOGGER.info(
-                    "한도 소진 상태이므로 신규 재무 수집은 건너뜁니다 (캐시 %s개 사용, %s개 미수집).",
-                    len(financials),
-                    len(corp_codes_needing_financials),
+                    "한도 소진 상태이므로 신규 재무 수집은 건너뜁니다 (캐시된 기업 %s개 사용).",
+                    len(report_store),
                 )
-            elif corp_codes_needing_financials:
-                LOGGER.info("OpenDART 재무제표(순이익/매출) 수집 시작: %s개 기업", len(corp_codes_needing_financials))
-                cached_before = dict(financials)
-
-                def checkpoint(partial: dict[str, dict[str, list[float | None]]]) -> None:
-                    dart_financials.save_cache(financials_cache_path, now, {**cached_before, **partial})
-
-                collected, limit_reached = dart_financials.collect_financials(
-                    dart_api_key, corp_codes_needing_financials, now, on_progress=checkpoint
+                financials = {
+                    code: dart_financials.derive_series(report_store.get(code, {}), now)
+                    for code in wanted_codes
+                }
+            else:
+                LOGGER.info(
+                    "OpenDART 재무제표 수집: 전체 %s개 기업 (그중 %s개는 지배주주지분 순이익으로 보정)",
+                    len(wanted_codes),
+                    len(precise_codes),
                 )
-                financials.update(collected)
-                dart_financials.save_cache(financials_cache_path, now, financials)
+
+                def checkpoint(partial: dict[str, dict[str, Any]]) -> None:
+                    dart_financials.save_reports(reports_cache_path, now, partial)
+
+                financials, limit_reached = dart_financials.collect_financials(
+                    dart_api_key,
+                    wanted_codes,
+                    now,
+                    reports=report_store,
+                    priority_codes=precise_codes,
+                    on_progress=checkpoint,
+                )
+                dart_financials.save_reports(reports_cache_path, now, report_store)
                 if limit_reached:
                     LOGGER.warning(
-                        "OpenDART 일일 한도로 %s개 기업만 수집됨 (전체 %s개). 남은 기업은 다음 실행 때 이어서 수집합니다.",
-                        len(financials),
-                        len(corp_codes),
+                        "OpenDART 일일 한도 도달 - 수집된 보고서까지만 반영합니다. 남은 부분은 다음 실행 때 이어서 수집합니다."
                     )
-            else:
-                LOGGER.info("OpenDART 재무제표 캐시 재사용 (%s개 기업)", len(financials))
     else:
         LOGGER.warning("DART_API_KEY가 없어 corpCode 매핑 및 재무제표 수집을 건너뜁니다.")
 
@@ -377,7 +404,7 @@ def main() -> None:
 
         item = {
             "ticker": ticker,
-            "name": str(stock.get_market_ticker_name(ticker) or ticker),
+            "name": str(ticker_names.get(ticker) or ticker),
             "market": market,
             "price": int(round(price)),
             "changePct": change,
