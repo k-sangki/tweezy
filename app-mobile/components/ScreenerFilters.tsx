@@ -314,7 +314,7 @@ export function ScreenerFilters() {
       </FilterGroup>
 
       <FilterGroup
-        title="밸류에이션"
+        title="배당"
         checked={groupChecked('valuation')}
         indeterminate={groupIndeterminate('valuation')}
         onCheckedChange={(checked) => toggleGroup('valuation', checked)}
@@ -405,12 +405,12 @@ export function ScreenerFilters() {
         onCheckedChange={(checked) => toggleGroup('loss', checked)}
       >
         <FilterRow
-          label="순이익 적자"
+          label="최종적으로 손해 (순이익 적자)"
           checked={state.netLoss.on}
           onCheckedChange={(on) => setRow('netLoss', on)}
         />
         <FilterRow
-          label="영업이익 적자"
+          label="본업에서 손해 (영업이익 적자)"
           checked={state.operatingLoss.on}
           onCheckedChange={(on) => setRow('operatingLoss', on)}
         />
@@ -418,7 +418,7 @@ export function ScreenerFilters() {
       </FilterGroup>
 
       <FilterGroup
-        title="재무건전성 기준 미달 제외"
+        title="재정이 위험한 기업 제외"
         checked={groupChecked('health')}
         indeterminate={groupIndeterminate('health')}
         onCheckedChange={(checked) => toggleGroup('health', checked)}
@@ -455,7 +455,7 @@ export function ScreenerFilters() {
       </FilterGroup>
 
       <FilterGroup
-        title="주가"
+        title="너무 싼 주식 제외"
         checked={state.priceFloor.on}
         onCheckedChange={(on) => setRow('priceFloor', on)}
         titleControls={
@@ -467,13 +467,13 @@ export function ScreenerFilters() {
               value={state.priceFloor.value}
               onChange={(value) => patch('priceFloor', { value, on: true })}
             />
-            <Text style={styles.titleTail}>이하 제외</Text>
+            <Text style={styles.titleTail}>이하</Text>
           </>
         }
       />
 
       <FilterGroup
-        title="펀더멘털"
+        title="기업 기초체력"
         checked={groupChecked('fundamental')}
         indeterminate={groupIndeterminate('fundamental')}
         onCheckedChange={(checked) => toggleGroup('fundamental', checked)}
@@ -570,7 +570,7 @@ export function ScreenerFilters() {
         onCheckedChange={(checked) => toggleGroup('short', checked)}
       >
         <FilterRow
-          label="공매도 잔고가 많은 편"
+          label="공매도가 많이 쌓인 종목"
           note="상장주식 수 대비 잔고 비중이 전체 종목 중 상위권"
           checked={state.shortLevel.on}
           onCheckedChange={(on) => setRow('shortLevel', on)}
@@ -605,7 +605,7 @@ export function ScreenerFilters() {
           />
         </FilterRow>
         <FilterRow
-          label="공매도 잔고 급감"
+          label="공매도 세력이 발 빼는 중"
           checked={state.shortInterest.on}
           onCheckedChange={(on) => setRow('shortInterest', on)}
         >
