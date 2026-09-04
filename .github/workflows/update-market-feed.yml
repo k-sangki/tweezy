@@ -2,8 +2,12 @@ name: Update market feed
 
 on:
   schedule:
-    # 09:45 UTC = 18:45 KST, weekdays - after KRX close, same cadence rs-screener uses
+    # 09:45 UTC = 18:45 KST. Weekdays refresh prices/수급/공매도/기술적 지표
+    # only (--skip-financials below) - 재무제표(DART) is quarterly/annual, so
+    # re-fetching it every weekday would burn OpenDART's daily quota for
+    # identical data. Sunday does the full run, including a fresh DART pull.
     - cron: '45 9 * * 1-5'
+    - cron: '45 9 * * 0'
   workflow_dispatch: {}
 
 permissions:
@@ -22,12 +26,14 @@ jobs:
       - uses: actions/cache@v4
         with:
           # collect_quotes.py runs with the repo root as cwd, so its default
-          # cache paths (.cache/dart_financials.json, .cache/kr_price_history.pkl)
+          # cache paths (.cache/dart_reports.json, .cache/kr_price_history.pkl)
           # resolve here. The whole dir is cached so three things survive a run:
-          # the corp_code map (without it, cached financials can't be matched back
-          # to tickers on a day when DART's quota is already spent), the collected
-          # financials, and ~50MB of daily OHLCV - which turns the price history
-          # step from ~2,700 full-year fetches into a one-session tail fetch.
+          # the corp_code map (without it, cached reports can't be matched back
+          # to tickers when DART is skipped or unavailable), the DART report
+          # store weekday runs read from without hitting the network (see
+          # --skip-financials above), and ~50MB of daily OHLCV - which turns
+          # the price history step from ~2,700 full-year fetches into a
+          # one-session tail fetch.
           path: .cache
           key: collector-cache-${{ github.run_id }}
           restore-keys: |
@@ -36,7 +42,16 @@ jobs:
 
       - run: pip install -r data-pipeline/requirements.txt
 
-      - run: python data-pipeline/collect_quotes.py --output data/kr-quotes.json
+      - name: Collect market feed
+        run: |
+          # Only the weekday cron skips DART; workflow_dispatch and the
+          # Sunday cron both do a full run (github.event.schedule is unset
+          # for a manual run, so this falls through to the full-run branch).
+          if [ "${{ github.event.schedule }}" = "45 9 * * 1-5" ]; then
+            python data-pipeline/collect_quotes.py --output data/kr-quotes.json --skip-financials
+          else
+            python data-pipeline/collect_quotes.py --output data/kr-quotes.json
+          fi
         env:
           DART_API_KEY: ${{ secrets.DART_API_KEY }}
           KRX_ID: ${{ secrets.KRX_ID }}

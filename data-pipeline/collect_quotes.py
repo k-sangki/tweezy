@@ -67,7 +67,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", default="data/kr-quotes.json")
     parser.add_argument("--dart-api-key", default=None, help="defaults to $DART_API_KEY")
     parser.add_argument("--financials-cache", default=".cache/dart_reports.json")
-    parser.add_argument("--skip-financials", action="store_true", help="skip quarterly/annual profit+revenue collection")
+    parser.add_argument(
+        "--skip-financials",
+        action="store_true",
+        help="don't hit OpenDART - build financial fields from the existing report cache only (재무제표는 분기/연간 단위로만 바뀌므로 매일 새로 받을 필요가 없다; use on weekday runs, do a full run weekly to actually refresh)",
+    )
     parser.add_argument(
         "--precise-financials-min-cap",
         type=float,
@@ -375,9 +379,15 @@ def main() -> None:
     dart_api_key = args.dart_api_key or os.environ.get("DART_API_KEY", "").strip()
     corp_codes: dict[str, str] = {}
     financials: dict[str, dict[str, list[float | None]]] = {}
-    dart_unavailable = False
-    if dart_api_key:
-        corp_codes_cache_path = Path(args.financials_cache).with_name("dart_corp_codes.json")
+    corp_codes_cache_path = Path(args.financials_cache).with_name("dart_corp_codes.json")
+    # 재무제표는 분기/연간 단위로만 바뀌므로, 매일 새로 받을 이유가 없다 -
+    # 평일 실행은 신규 요청 없이 캐시에서만 구성한다(같은 경로를 DART가 응답이
+    # 없을 때의 폴백과 공유). 일요일 전체 실행이 실제로 최신화한다.
+    dart_unavailable = args.skip_financials
+    if args.skip_financials:
+        LOGGER.info("--skip-financials: OpenDART 요청 없이 캐시로만 재무 데이터를 구성합니다.")
+        corp_codes = load_corp_codes_cache(corp_codes_cache_path)
+    elif dart_api_key:
         LOGGER.info("OpenDART corp_code 매핑 다운로드 중")
         try:
             corp_codes = download_corp_codes(dart_api_key)
@@ -395,57 +405,60 @@ def main() -> None:
                 error,
             )
 
-        if corp_codes and not args.skip_financials:
-            reports_cache_path = Path(args.financials_cache)
-            report_store = dart_financials.load_reports(reports_cache_path, now)
-            listed = {
-                code: ticker for ticker, code in corp_codes.items() if ticker in market_cap.index
+    if not corp_codes:
+        if args.skip_financials:
+            LOGGER.warning("재무 캐시가 비어 있어 이번 실행은 재무 데이터 없이 발행합니다.")
+        elif not dart_api_key:
+            LOGGER.warning("DART_API_KEY가 없어 corpCode 매핑 및 재무제표 수집을 건너뜁니다.")
+    else:
+        reports_cache_path = Path(args.financials_cache)
+        report_store = dart_financials.load_reports(reports_cache_path, now)
+        listed = {
+            code: ticker for ticker, code in corp_codes.items() if ticker in market_cap.index
+        }
+        # Reports are cached per (company, year, report), so a new quarter
+        # costs one report per company rather than a full re-collection.
+        wanted_codes = sorted(listed)
+        # 지배주주지분 순이익은 단일회사 API에서만 나오고 기업당 호출이라
+        # 비싸다. 화면에서 실제로 걸러질 가능성이 높은 중형주 이상에만 적용.
+        precise_codes = sorted(
+            code
+            for code, ticker in listed.items()
+            if float(market_cap.get(ticker, 0.0)) >= args.precise_financials_min_cap
+        )
+
+        if dart_unavailable:
+            LOGGER.info(
+                "OpenDART 신규 수집 없이 캐시된 기업 %s개로 재무 데이터를 구성합니다.",
+                len(report_store),
+            )
+            financials = {
+                code: dart_financials.derive_series(report_store.get(code, {}), now)
+                for code in wanted_codes
             }
-            # Reports are cached per (company, year, report), so a new quarter
-            # costs one report per company rather than a full re-collection.
-            wanted_codes = sorted(listed)
-            # 지배주주지분 순이익은 단일회사 API에서만 나오고 기업당 호출이라
-            # 비싸다. 화면에서 실제로 걸러질 가능성이 높은 중형주 이상에만 적용.
-            precise_codes = sorted(
-                code
-                for code, ticker in listed.items()
-                if float(market_cap.get(ticker, 0.0)) >= args.precise_financials_min_cap
+        else:
+            LOGGER.info(
+                "OpenDART 재무제표 수집: 전체 %s개 기업 (그중 %s개는 지배주주지분 순이익으로 보정)",
+                len(wanted_codes),
+                len(precise_codes),
             )
 
-            if dart_unavailable:
-                LOGGER.info(
-                    "OpenDART에 접근할 수 없어 신규 재무 수집은 건너뜁니다 (캐시된 기업 %s개 사용).",
-                    len(report_store),
-                )
-                financials = {
-                    code: dart_financials.derive_series(report_store.get(code, {}), now)
-                    for code in wanted_codes
-                }
-            else:
-                LOGGER.info(
-                    "OpenDART 재무제표 수집: 전체 %s개 기업 (그중 %s개는 지배주주지분 순이익으로 보정)",
-                    len(wanted_codes),
-                    len(precise_codes),
-                )
+            def checkpoint(partial: dict[str, dict[str, Any]]) -> None:
+                dart_financials.save_reports(reports_cache_path, now, partial)
 
-                def checkpoint(partial: dict[str, dict[str, Any]]) -> None:
-                    dart_financials.save_reports(reports_cache_path, now, partial)
-
-                financials, limit_reached = dart_financials.collect_financials(
-                    dart_api_key,
-                    wanted_codes,
-                    now,
-                    reports=report_store,
-                    priority_codes=precise_codes,
-                    on_progress=checkpoint,
+            financials, limit_reached = dart_financials.collect_financials(
+                dart_api_key,
+                wanted_codes,
+                now,
+                reports=report_store,
+                priority_codes=precise_codes,
+                on_progress=checkpoint,
+            )
+            dart_financials.save_reports(reports_cache_path, now, report_store)
+            if limit_reached:
+                LOGGER.warning(
+                    "OpenDART 일일 한도 도달 - 수집된 보고서까지만 반영합니다. 남은 부분은 다음 실행 때 이어서 수집합니다."
                 )
-                dart_financials.save_reports(reports_cache_path, now, report_store)
-                if limit_reached:
-                    LOGGER.warning(
-                        "OpenDART 일일 한도 도달 - 수집된 보고서까지만 반영합니다. 남은 부분은 다음 실행 때 이어서 수집합니다."
-                    )
-    else:
-        LOGGER.warning("DART_API_KEY가 없어 corpCode 매핑 및 재무제표 수집을 건너뜁니다.")
 
     magic_ranks = magic_formula_ranks(financials, corp_codes, market_cap) if financials else {}
 
