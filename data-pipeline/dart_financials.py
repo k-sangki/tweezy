@@ -354,7 +354,31 @@ def plan(year: int, quarter: int) -> tuple[list[ReportRef], dict[tuple[int, int]
     ]
     reports.update(annuals)
 
-    return sorted(reports), recipes, annuals
+    # Fetch order, not just the report set: almost every filter reads index 0
+    # of a series (this quarter, this fiscal year), so those reports go first.
+    # A plain sorted() puts the oldest annual report first instead - harmless
+    # when every report gets fetched, but under a budget cutoff it means
+    # everyone's *oldest* data arrives while *no one* has this year's, which is
+    # what every index-0 read actually needs. Observed in production: a run
+    # that got through 3 of 8 reports left annualNetIncome[0..2] null for every
+    # single company, because the 3 it completed were the three oldest annual
+    # reports and the current one was never reached.
+    priority: list[ReportRef] = []
+    seen: set[ReportRef] = set()
+
+    def add(ref: ReportRef) -> None:
+        if ref in reports and ref not in seen:
+            seen.add(ref)
+            priority.append(ref)
+
+    for ref, _, _ in recipes[quarters[0]]:  # this quarter - quarterly series index 0
+        add(ref)
+    if annuals:
+        add(annuals[0])  # this fiscal year - annual series index 0
+    for ref in sorted(reports):  # everything else, deterministic order
+        add(ref)
+
+    return priority, recipes, annuals
 
 
 # --------------------------------------------------------------------------
@@ -648,10 +672,14 @@ def collect_financials(
     blocked = threading.Event()
     consecutive_baseline = [0]
     priority = [code for code in priority_codes if code in set(corp_codes)]
+    # Report-major, not company-major: `needed` is now priority-ordered (this
+    # quarter and this fiscal year first - see plan()), so if this pass also
+    # runs out of budget, the most load-bearing report lands on the most
+    # companies rather than exhausting all 8 reports on a handful of them.
     upgrade_jobs = [
         (code, ref)
-        for code in priority
         for ref in needed
+        for code in priority
         if (stored(code, ref) or {}).get("src") != "s"
     ]
     if upgrade_jobs and not limit_reached.is_set():
