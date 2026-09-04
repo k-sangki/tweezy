@@ -31,6 +31,7 @@ export default function ScreenerListScreen() {
         ListHeaderComponent={
           <>
             {feedDate ? <Text style={styles.sessionLabel}>{sessionChangeLabel(feedDate)}</Text> : null}
+            <Text style={styles.disclaimer}>Tweezy는 실시간 시세를 제공하지 않습니다</Text>
             <ScreenerFilters />
             <View style={styles.countRow}>
               <Text style={styles.count}>
@@ -64,6 +65,12 @@ const createStyles = (colors: Palette) =>
       color: colors.textMuted,
       textAlign: 'center',
       paddingTop: spacing.sm,
+    },
+    disclaimer: {
+      fontSize: 11,
+      color: colors.textMuted,
+      textAlign: 'center',
+      paddingTop: 2,
     },
     countRow: {
       flexDirection: 'row',
