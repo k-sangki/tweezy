@@ -456,11 +456,14 @@ def main() -> None:
             args.net_buy_days,
             args.short_interest_days,
         )
-        flow_and_short = market_flow.collect_flow_and_short_interest(
-            date,
-            net_buy_days=args.net_buy_days,
-            short_interest_days=args.short_interest_days,
-        )
+        try:
+            flow_and_short = market_flow.collect_flow_and_short_interest(
+                date,
+                net_buy_days=args.net_buy_days,
+                short_interest_days=args.short_interest_days,
+            )
+        except Exception as error:  # noqa: BLE001 - 수급/공매도 without publishing everything else
+            LOGGER.warning("수급/공매도 수집 실패 - 이번 실행은 해당 필드 없이 발행합니다: %s", error)
 
     eligible = [
         str(raw)
