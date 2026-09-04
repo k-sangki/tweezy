@@ -37,6 +37,19 @@ export async function saveFilter<T>(name: string, state: T): Promise<SavedFilter
   return next;
 }
 
+export async function overwriteSavedFilter<T>(id: string, state: T): Promise<SavedFilter<T>[]> {
+  const list = await listSavedFilters<T>();
+  const next = list.map((entry) =>
+    entry.id === id ? { ...entry, state, savedAt: new Date().toISOString() } : entry,
+  );
+  try {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // Best-effort; see saveFilter.
+  }
+  return next;
+}
+
 export async function deleteSavedFilter<T>(id: string): Promise<SavedFilter<T>[]> {
   const list = await listSavedFilters<T>();
   const next = list.filter((entry) => entry.id !== id);

@@ -18,7 +18,13 @@ import {
 } from '@tweezy/core';
 import { useTheme, radius, spacing, type Palette } from '../lib/theme';
 import { useScreener } from '../lib/ScreenerContext';
-import { deleteSavedFilter, listSavedFilters, saveFilter, type SavedFilter } from '../lib/savedFilters';
+import {
+  deleteSavedFilter,
+  listSavedFilters,
+  overwriteSavedFilter,
+  saveFilter,
+  type SavedFilter,
+} from '../lib/savedFilters';
 import { Checkbox } from './Checkbox';
 import { FilterGroup } from './FilterGroup';
 import { FilterRow } from './FilterRow';
@@ -228,20 +234,47 @@ export function ScreenerFilters() {
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [loadModalOpen, setLoadModalOpen] = useState(false);
   const [saveName, setSaveName] = useState('');
+  // Non-null while the save modal is showing "정말 덮어쓸까요?" for this
+  // existing entry, instead of the name-entry view.
+  const [overwriteTarget, setOverwriteTarget] = useState<SavedFilter<FiltersState> | null>(null);
 
   useEffect(() => {
     listSavedFilters<FiltersState>().then(setSavedFilters);
   }, []);
 
-  const resetFilters = () => setState(INITIAL_STATE);
+  // Not INITIAL_STATE verbatim: that's the app's opinionated first-load
+  // default (적자 제외 두 개가 켜져 있음), but "초기화" means clear every
+  // checkbox, full stop - the only two rows INITIAL_STATE starts on.
+  const resetFilters = () =>
+    setState({ ...INITIAL_STATE, netLoss: { on: false }, operatingLoss: { on: false } });
+
+  const closeSaveModal = () => {
+    setSaveModalOpen(false);
+    setSaveName('');
+    setOverwriteTarget(null);
+  };
 
   const confirmSaveFilter = () => {
     const name = saveName.trim();
     if (!name) return;
+    // Typing the name of an existing saved filter is the same request as
+    // tapping it in the list below - confirm before replacing it either way.
+    const existing = savedFilters.find((entry) => entry.name === name);
+    if (existing) {
+      setOverwriteTarget(existing);
+      return;
+    }
     saveFilter(name, state).then((next) => {
       setSavedFilters(next);
-      setSaveName('');
-      setSaveModalOpen(false);
+      closeSaveModal();
+    });
+  };
+
+  const confirmOverwrite = () => {
+    if (!overwriteTarget) return;
+    overwriteSavedFilter(overwriteTarget.id, state).then((next) => {
+      setSavedFilters(next);
+      closeSaveModal();
     });
   };
 
@@ -786,44 +819,66 @@ export function ScreenerFilters() {
         ))}
       </FilterGroup>
 
-      <Modal
-        visible={saveModalOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setSaveModalOpen(false)}
-      >
-        <Pressable style={styles.overlay} onPress={() => setSaveModalOpen(false)}>
+      <Modal visible={saveModalOpen} transparent animationType="fade" onRequestClose={closeSaveModal}>
+        <Pressable style={styles.overlay} onPress={closeSaveModal}>
           <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
-            <Text style={styles.sheetTitle}>필터 저장</Text>
-            <Text style={styles.sheetBody}>지금 설정된 필터 조합에 이름을 붙여서 저장해요.</Text>
-            <TextInput
-              value={saveName}
-              onChangeText={setSaveName}
-              placeholder="예: 저평가 성장주"
-              placeholderTextColor={colors.textMuted}
-              style={styles.textInput}
-              autoFocus
-              onSubmitEditing={confirmSaveFilter}
-              returnKeyType="done"
-            />
-            <View style={styles.sheetActions}>
-              <Pressable
-                style={styles.sheetSecondaryButton}
-                onPress={() => {
-                  setSaveName('');
-                  setSaveModalOpen(false);
-                }}
-              >
-                <Text style={styles.sheetSecondaryButtonText}>취소</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.sheetPrimaryButton, !saveName.trim() && styles.sheetPrimaryButtonDisabled]}
-                onPress={confirmSaveFilter}
-                disabled={!saveName.trim()}
-              >
-                <Text style={styles.sheetPrimaryButtonText}>저장</Text>
-              </Pressable>
-            </View>
+            {overwriteTarget ? (
+              <>
+                <Text style={styles.sheetTitle}>덮어쓸까요?</Text>
+                <Text style={styles.sheetBody}>
+                  {'\''}{overwriteTarget.name}{'\''}에 지금 필터를 덮어쓸게요. 기존에 저장된 내용은 사라져요.
+                </Text>
+                <View style={styles.sheetActions}>
+                  <Pressable style={styles.sheetSecondaryButton} onPress={() => setOverwriteTarget(null)}>
+                    <Text style={styles.sheetSecondaryButtonText}>취소</Text>
+                  </Pressable>
+                  <Pressable style={styles.sheetPrimaryButton} onPress={confirmOverwrite}>
+                    <Text style={styles.sheetPrimaryButtonText}>덮어쓰기</Text>
+                  </Pressable>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={styles.sheetTitle}>필터 저장</Text>
+                <Text style={styles.sheetBody}>지금 설정된 필터 조합에 이름을 붙여서 저장해요.</Text>
+                <TextInput
+                  value={saveName}
+                  onChangeText={setSaveName}
+                  placeholder="예: 저평가 성장주"
+                  placeholderTextColor={colors.textMuted}
+                  style={styles.textInput}
+                  autoFocus
+                  onSubmitEditing={confirmSaveFilter}
+                  returnKeyType="done"
+                />
+                {savedFilters.length > 0 ? (
+                  <>
+                    <Text style={styles.sheetSection}>이미 저장된 필터 - 선택하면 덮어써요</Text>
+                    {savedFilters.map((entry) => (
+                      <Pressable
+                        key={entry.id}
+                        style={styles.savedRow}
+                        onPress={() => setOverwriteTarget(entry)}
+                      >
+                        <Text style={styles.savedRowName}>{entry.name}</Text>
+                      </Pressable>
+                    ))}
+                  </>
+                ) : null}
+                <View style={styles.sheetActions}>
+                  <Pressable style={styles.sheetSecondaryButton} onPress={closeSaveModal}>
+                    <Text style={styles.sheetSecondaryButtonText}>취소</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.sheetPrimaryButton, !saveName.trim() && styles.sheetPrimaryButtonDisabled]}
+                    onPress={confirmSaveFilter}
+                    disabled={!saveName.trim()}
+                  >
+                    <Text style={styles.sheetPrimaryButtonText}>저장</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
           </Pressable>
         </Pressable>
       </Modal>
