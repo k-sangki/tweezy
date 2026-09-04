@@ -73,6 +73,8 @@ const TECHNICAL_PATTERNS: { key: TechnicalPattern; label: string; note: string }
   { key: 'breakoutDone', label: '전고점 돌파 완료', note: '오늘 52주 신고가를 경신' },
   { key: 'volumeDryUp', label: '거래량 마름', note: '10일 평균 거래량이 50일 평균의 70% 이하' },
   { key: 'boxRange', label: '박스권 갇힘', note: '최근 20일 고저 폭 15% 이내에서 횡보' },
+  { key: 'maAlignedShort', label: '이평선 정배열 (단기)', note: '현재가 > 10일선 > 20일선 > 50일선' },
+  { key: 'maAlignedLong', label: '이평선 정배열 (장기)', note: '현재가 > 50일선 > 150일선 > 200일선' },
 ];
 
 const RS_RATING_OPTIONS = [70, 80, 90].map((n) => ({ label: String(n), value: n }));

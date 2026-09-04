@@ -98,11 +98,13 @@ def price_metrics(
     if not (len(closes) == len(highs) == len(lows) == len(volumes)):
         return None
 
+    ma10 = average(closes, 10)
+    ma20 = average(closes, 20)
     ma50 = average(closes, 50)
     ma150 = average(closes, 150)
     ma200 = average(closes, 200)
     ma200_prior = average(closes[:-20], 200)
-    if None in (ma50, ma150, ma200, ma200_prior):
+    if None in (ma10, ma20, ma50, ma150, ma200, ma200_prior):
         return None
 
     current = float(closes[-1])
@@ -127,9 +129,14 @@ def price_metrics(
     box_low = min(lows[-21:-1])
     box_tight = box_low > 0 and (box_high / box_low - 1) <= 0.15
 
-    ma_aligned = current > ma50 > ma150 > ma200
+    # Two separate alignments: short-term (10/20/50일, pullback/momentum reads)
+    # and long-term (50/150/200일, Minervini's trend-template leg). They are
+    # independent signals, not a spectrum - a stock can hold one without the
+    # other, e.g. consolidating short-term inside an intact long-term uptrend.
+    ma_aligned_short = current > ma10 > ma20 > ma50
+    ma_aligned_long = current > ma50 > ma150 > ma200
     trend_template = bool(
-        ma_aligned
+        ma_aligned_long
         and ma200 > ma200_prior
         and current >= low52 * 1.30
         and current >= high52 * 0.75
@@ -146,7 +153,8 @@ def price_metrics(
         "high52Pct": round(current / high52 * 100, 2),
         # Excludes today, so this is a genuine new high rather than "still the high".
         "newHigh52": bool(current >= max(highs[-TRADING_DAYS_PER_YEAR:-1])),
-        "maAligned": ma_aligned,
+        "maAlignedShort": ma_aligned_short,
+        "maAlignedLong": ma_aligned_long,
         "trendTemplateBase": trend_template,
         "volumeDryUp": volume_dry_up,
         "boxBreakout": bool(box_tight and current >= box_high),

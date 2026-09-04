@@ -24,6 +24,10 @@ export function matchesTechnicalPattern(stock: Stock, pattern: TechnicalPattern)
       return stock.volumeDryUp === true;
     case 'boxRange':
       return stock.boxRange === true;
+    case 'maAlignedShort':
+      return stock.maAlignedShort === true;
+    case 'maAlignedLong':
+      return stock.maAlignedLong === true;
   }
 }
 

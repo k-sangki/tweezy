@@ -74,7 +74,10 @@ export interface Stock {
   rsRating?: number | null;
   trendScore?: number | null;
   trendTemplate?: boolean;
-  maAligned?: boolean;
+  /** 현재가 > 10일선 > 20일선 > 50일선. Short-term pullback/momentum read. */
+  maAlignedShort?: boolean;
+  /** 현재가 > 50일선 > 150일선 > 200일선. Minervini's trend-template leg. */
+  maAlignedLong?: boolean;
   vcp?: boolean;
   newHigh52?: boolean;
   high52Pct?: number | null;
@@ -137,7 +140,13 @@ export interface ShortInterestTrendFilter {
 
 export type InvestorPreset = 'buffett' | 'lynch' | 'oneil' | 'graham' | 'minervini' | 'greenblatt';
 
-export type TechnicalPattern = 'breakoutImminent' | 'breakoutDone' | 'volumeDryUp' | 'boxRange';
+export type TechnicalPattern =
+  | 'breakoutImminent'
+  | 'breakoutDone'
+  | 'volumeDryUp'
+  | 'boxRange'
+  | 'maAlignedShort'
+  | 'maAlignedLong';
 
 /**
  * 'full' drops only 완전자본잠식 (자본총계 <= 0); 'partial' also drops
