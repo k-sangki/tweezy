@@ -690,17 +690,7 @@ export function ScreenerFilters() {
         }
       />
 
-      <FilterGroup
-        title="기술적 패턴"
-        checked={state.patterns.length === TECHNICAL_PATTERNS.length}
-        indeterminate={state.patterns.length > 0 && state.patterns.length < TECHNICAL_PATTERNS.length}
-        onCheckedChange={(checked) =>
-          setState((current) => ({
-            ...current,
-            patterns: checked ? TECHNICAL_PATTERNS.map((pattern) => pattern.key) : [],
-          }))
-        }
-      >
+      <FilterGroup title="기술적 패턴">
         <Text style={styles.groupHint}>여러 개를 고르면 조건을 모두 만족하는 종목만 남습니다.</Text>
         {TECHNICAL_PATTERNS.map((pattern) => (
           <FilterRow
