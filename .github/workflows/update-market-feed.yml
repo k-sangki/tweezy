@@ -1,13 +1,9 @@
 name: Update market feed
 
 on:
-  # TEMPORARILY DISABLED (2026-09-03): DART and KRX started refusing this
-  # project's requests after a heavy day of pipeline testing, so the schedule
-  # is paused to let that clear. Re-enable by uncommenting - the collector can
-  # still be run by hand from the Actions tab meanwhile.
-  # schedule:
-  #   # 09:45 UTC = 18:45 KST, weekdays - after KRX close, same cadence rs-screener uses
-  #   - cron: '45 9 * * 1-5'
+  schedule:
+    # 09:45 UTC = 18:45 KST, weekdays - after KRX close, same cadence rs-screener uses
+    - cron: '45 9 * * 1-5'
   workflow_dispatch: {}
 
 permissions:
