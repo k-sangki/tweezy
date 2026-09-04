@@ -593,7 +593,7 @@ export function ScreenerFilters() {
         </FilterRow>
         <FilterRow
           label="매출 성장률"
-          note="이번 분기 매출이 작년 같은 분기보다 그만큼 이상 늘었을 때"
+          note="회사가 벌어들인 전체 돈이 작년 같은 기간보다 얼마나 늘었는지 보여줘요."
           checked={state.revenueGrowthYoY.on}
           onCheckedChange={(on) => setRow('revenueGrowthYoY', on)}
         >
@@ -607,8 +607,8 @@ export function ScreenerFilters() {
           <Text style={styles.rowText}>이상 (전년동기 대비)</Text>
         </FilterRow>
         <FilterRow
-          label="한 주당 버는 돈이 늘어나는 속도"
-          note="희석주당이익(EPS) 기준 - 자사주 매입·전환사채 등 주식 수 변화까지 반영돼 순이익 성장률과 다를 수 있음"
+          label="희석 주당순이익(EPS) 증가율"
+          note="나중에 풀릴 주식까지 미리 포함해서 계산했을 때, 작년 같은 기간보다 1주당 이익이 얼마나 늘었는지 보여줘요."
           checked={state.dilutedEpsGrowthYoY.on}
           onCheckedChange={(on) => setRow('dilutedEpsGrowthYoY', on)}
         >
