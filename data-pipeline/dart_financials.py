@@ -80,6 +80,15 @@ MAX_ATTEMPTS = 4
 # each remaining job would burn its full retry ladder (~7s) for nothing, so the
 # pass gives up after this many consecutive failures and resumes next run.
 CONSECUTIVE_FAILURE_LIMIT = 30
+# Belt-and-suspenders beneath that: the failure counter only trips on a
+# *consecutive* run of failures, so a request that eventually times out
+# instead of failing fast (each one bounded at up to ~4*(timeout+backoff) by
+# _get's own retry ladder, worst case a couple of minutes) can interleave with
+# occasional real successes and never trip it, while still crawling for hours
+# across thousands of jobs. Observed: a 2+ hour stall with the breaker never
+# firing. This wall-clock budget covers the whole collect_financials() call,
+# both passes together.
+COLLECT_BUDGET_SECONDS = 1800.0
 
 # Income-statement kinds carry a standalone quarterly series and an annual one;
 # balance-sheet kinds are point-in-time, so only the annual snapshots are kept.
@@ -555,6 +564,7 @@ def collect_financials(
     priority_codes: Iterable[str] = (),
     workers: int = 4,
     on_progress: Callable[[dict[str, CorpReports]], None] | None = None,
+    budget_seconds: float = COLLECT_BUDGET_SECONDS,
 ) -> tuple[dict[str, dict[str, list[float | None]]], bool]:
     """Fill `reports` for `corp_codes`, then derive each company's series.
 
@@ -564,12 +574,14 @@ def collect_financials(
 
     Returns (series by corp_code, daily_limit_reached). Hitting the quota stops
     collection but is not an error: whatever was gathered is kept and the next
-    run resumes with only the missing reports.
+    run resumes with only the missing reports. Running out of `budget_seconds`
+    is handled the same way - see COLLECT_BUDGET_SECONDS.
     """
     store = reports if reports is not None else {}
     needed, _, _ = plan(*latest_quarter(now))
     limit_reached = threading.Event()
     lock = threading.Lock()
+    deadline = time.monotonic() + budget_seconds
 
     def stored(corp_code: str, ref: ReportRef) -> dict[str, Any] | None:
         return store.get(corp_code, {}).get(_store_key(*ref))
@@ -606,14 +618,28 @@ def collect_financials(
         for code in codes:
             put(code, ref, found.get(code))
 
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [executor.submit(run_batch, job) for job in batch_jobs]
-        for index, future in enumerate(as_completed(futures), start=1):
-            future.result()
-            if index % 20 == 0:
-                LOGGER.info("DART 배치 %s/%s 완료", index, len(futures))
-                if on_progress:
-                    on_progress(store)
+    # Not `with ThreadPoolExecutor(...) as executor:` on either pass below -
+    # the context manager's __exit__ unconditionally calls shutdown(wait=True),
+    # which re-joins every thread in self._threads including ones still
+    # genuinely stuck in a call, silently undoing the wait=False in `finally`
+    # and blocking anyway. Confirmed by reading Executor.__exit__ and
+    # ThreadPoolExecutor.shutdown. Each pass gets its own executor so pass 2
+    # isn't starved by threads pass 1 abandoned.
+    batch_executor = ThreadPoolExecutor(max_workers=workers)
+    try:
+        futures = [batch_executor.submit(run_batch, job) for job in batch_jobs]
+        try:
+            remaining = max(0.0, deadline - time.monotonic())
+            for index, future in enumerate(as_completed(futures, timeout=remaining), start=1):
+                future.result()
+                if index % 20 == 0:
+                    LOGGER.info("DART 배치 %s/%s 완료", index, len(futures))
+                    if on_progress:
+                        on_progress(store)
+        except TimeoutError:
+            LOGGER.warning("DART 배치 수집이 제한시간을 초과해 중단합니다 - 나머지는 다음 실행에서 이어갑니다.")
+    finally:
+        batch_executor.shutdown(wait=False, cancel_futures=True)
 
     # --- pass 2: single-company upgrade for the priority tier ---------------
     # A company that fails here keeps its batch-sourced figures, so failures
@@ -654,14 +680,21 @@ def collect_financials(
             put(code, ref, extracted)
 
     if not limit_reached.is_set():
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = [executor.submit(run_single, job) for job in upgrade_jobs]
-            for index, future in enumerate(as_completed(futures), start=1):
-                future.result()
-                if index % 500 == 0:
-                    LOGGER.info("DART 보정 %s/%s 완료", index, len(futures))
-                    if on_progress:
-                        on_progress(store)
+        upgrade_executor = ThreadPoolExecutor(max_workers=workers)
+        try:
+            futures = [upgrade_executor.submit(run_single, job) for job in upgrade_jobs]
+            try:
+                remaining = max(0.0, deadline - time.monotonic())
+                for index, future in enumerate(as_completed(futures, timeout=remaining), start=1):
+                    future.result()
+                    if index % 500 == 0:
+                        LOGGER.info("DART 보정 %s/%s 완료", index, len(futures))
+                        if on_progress:
+                            on_progress(store)
+            except TimeoutError:
+                LOGGER.warning("DART 보정이 제한시간을 초과해 중단합니다 - 나머지는 다음 실행에서 이어갑니다.")
+        finally:
+            upgrade_executor.shutdown(wait=False, cancel_futures=True)
 
     if blocked.is_set():
         LOGGER.warning(

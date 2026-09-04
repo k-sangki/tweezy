@@ -94,9 +94,14 @@ def collect_histories(
     # locally as 264 stragglers pinning the run for three hours. The whole step
     # gets a wall-clock budget instead; whatever is missing keeps its cached
     # history and is retried next run.
-    deadline = time.monotonic() + budget_seconds
     completed = 0
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+    # Not `with ThreadPoolExecutor(...) as executor:` - the context manager's
+    # __exit__ unconditionally calls shutdown(wait=True), which re-joins every
+    # thread in self._threads including ones still genuinely stuck in a
+    # pykrx call, silently undoing the wait=False below and blocking anyway.
+    # Confirmed by reading Executor.__exit__ and ThreadPoolExecutor.shutdown.
+    executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)
+    try:
         futures = {
             executor.submit(fetch_history, ticker, start, date, histories.get(ticker)): ticker
             for ticker in tickers
@@ -115,9 +120,8 @@ def collect_histories(
                 "가격 이력 수집 제한시간(%s초) 초과 - %s/%s개만 갱신하고 진행합니다.",
                 int(budget_seconds), completed, len(futures),
             )
-        finally:
-            if time.monotonic() >= deadline:
-                executor.shutdown(wait=False, cancel_futures=True)
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
     histories = {ticker: frame for ticker, frame in histories.items() if ticker in set(tickers)}
     save_cache(cache_path, histories)
