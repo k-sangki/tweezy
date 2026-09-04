@@ -237,6 +237,8 @@ export function ScreenerFilters() {
   // Non-null while the save modal is showing "정말 덮어쓸까요?" for this
   // existing entry, instead of the name-entry view.
   const [overwriteTarget, setOverwriteTarget] = useState<SavedFilter<FiltersState> | null>(null);
+  // Non-null while the load modal is showing "정말 삭제할까요?" for this entry.
+  const [deleteTarget, setDeleteTarget] = useState<SavedFilter<FiltersState> | null>(null);
 
   useEffect(() => {
     listSavedFilters<FiltersState>().then(setSavedFilters);
@@ -283,8 +285,17 @@ export function ScreenerFilters() {
     setLoadModalOpen(false);
   };
 
-  const removeSavedFilter = (id: string) => {
-    deleteSavedFilter<FiltersState>(id).then(setSavedFilters);
+  const closeLoadModal = () => {
+    setLoadModalOpen(false);
+    setDeleteTarget(null);
+  };
+
+  const confirmDeleteSavedFilter = () => {
+    if (!deleteTarget) return;
+    deleteSavedFilter<FiltersState>(deleteTarget.id).then((next) => {
+      setSavedFilters(next);
+      setDeleteTarget(null);
+    });
   };
 
   useEffect(() => {
@@ -887,28 +898,47 @@ export function ScreenerFilters() {
         visible={loadModalOpen}
         transparent
         animationType="fade"
-        onRequestClose={() => setLoadModalOpen(false)}
+        onRequestClose={closeLoadModal}
       >
-        <Pressable style={styles.overlay} onPress={() => setLoadModalOpen(false)}>
+        <Pressable style={styles.overlay} onPress={closeLoadModal}>
           <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
-            <Text style={styles.sheetTitle}>필터 불러오기</Text>
-            {savedFilters.length === 0 ? (
-              <Text style={styles.sheetBody}>저장된 필터가 없어요.</Text>
-            ) : (
-              savedFilters.map((entry) => (
-                <View key={entry.id} style={styles.savedRow}>
-                  <Pressable style={styles.savedRowMain} onPress={() => loadSavedFilter(entry)}>
-                    <Text style={styles.savedRowName}>{entry.name}</Text>
+            {deleteTarget ? (
+              <>
+                <Text style={styles.sheetTitle}>삭제할까요?</Text>
+                <Text style={styles.sheetBody}>
+                  {'\''}{deleteTarget.name}{'\''}을(를) 삭제할게요. 이 작업은 되돌릴 수 없어요.
+                </Text>
+                <View style={styles.sheetActions}>
+                  <Pressable style={styles.sheetSecondaryButton} onPress={() => setDeleteTarget(null)}>
+                    <Text style={styles.sheetSecondaryButtonText}>취소</Text>
                   </Pressable>
-                  <Pressable
-                    style={styles.savedRowDelete}
-                    onPress={() => removeSavedFilter(entry.id)}
-                    hitSlop={10}
-                  >
-                    <Text style={styles.savedRowDeleteText}>삭제</Text>
+                  <Pressable style={styles.sheetDangerButton} onPress={confirmDeleteSavedFilter}>
+                    <Text style={styles.sheetPrimaryButtonText}>삭제</Text>
                   </Pressable>
                 </View>
-              ))
+              </>
+            ) : (
+              <>
+                <Text style={styles.sheetTitle}>필터 불러오기</Text>
+                {savedFilters.length === 0 ? (
+                  <Text style={styles.sheetBody}>저장된 필터가 없어요.</Text>
+                ) : (
+                  savedFilters.map((entry) => (
+                    <View key={entry.id} style={styles.savedRow}>
+                      <Pressable style={styles.savedRowMain} onPress={() => loadSavedFilter(entry)}>
+                        <Text style={styles.savedRowName}>{entry.name}</Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.savedRowDelete}
+                        onPress={() => setDeleteTarget(entry)}
+                        hitSlop={10}
+                      >
+                        <Text style={styles.savedRowDeleteText}>삭제</Text>
+                      </Pressable>
+                    </View>
+                  ))
+                )}
+              </>
             )}
           </Pressable>
         </Pressable>
@@ -1089,6 +1119,14 @@ const createStyles = (colors: Palette) =>
     paddingHorizontal: spacing.lg,
     borderRadius: radius.md,
     backgroundColor: colors.accent,
+  },
+  // Delete specifically, not "덮어쓰기" - a distinct destructive colour so the
+  // two confirm dialogs don't look interchangeable.
+  sheetDangerButton: {
+    paddingVertical: 10,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.md,
+    backgroundColor: colors.positive,
   },
   sheetPrimaryButtonDisabled: {
     opacity: 0.4,
