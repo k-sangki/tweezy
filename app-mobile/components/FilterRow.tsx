@@ -30,7 +30,10 @@ export function FilterRow({ checked, onCheckedChange, label, children, unavailab
           <Checkbox size="sm" checked={on} disabled={unavailable} onPress={toggle} />
         </View>
         <View style={[styles.content, !on && styles.contentOff]}>
-          <Pressable onPress={toggle} disabled={unavailable} hitSlop={{ top: 10, bottom: 10 }}>
+          {/* left: 14 closes the dead zone between this Pressable and the
+              checkbox's own hitSlop across the row's 10px gap - without it, a
+              tap landing between the two controls hits neither. */}
+          <Pressable onPress={toggle} disabled={unavailable} hitSlop={{ top: 10, bottom: 10, left: 14 }}>
             <Text style={styles.label}>{label}</Text>
           </Pressable>
           {children}

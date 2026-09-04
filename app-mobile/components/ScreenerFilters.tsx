@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
   INVESTOR_PRESETS,
   PRESET_INFO,
@@ -18,6 +18,7 @@ import {
 } from '@tweezy/core';
 import { useTheme, radius, spacing, type Palette } from '../lib/theme';
 import { useScreener } from '../lib/ScreenerContext';
+import { deleteSavedFilter, listSavedFilters, saveFilter, type SavedFilter } from '../lib/savedFilters';
 import { Checkbox } from './Checkbox';
 import { FilterGroup } from './FilterGroup';
 import { FilterRow } from './FilterRow';
@@ -89,6 +90,8 @@ const DRAWDOWN_WINDOW_OPTIONS: { label: string; value: DrawdownWindow }[] =
 
 const DRAWDOWN_PCT_OPTIONS = [5, 10, 20, 30].map((n) => ({ label: `${n}%`, value: n }));
 
+const YOY_GROWTH_OPTIONS = [5, 10, 15, 20, 30, 50].map((n) => ({ label: `${n}%`, value: n }));
+
 const IMPAIRMENT_OPTIONS: { label: string; value: CapitalImpairmentLevel }[] = [
   { label: '자본금까지 까먹음', value: 'partial' },
   { label: '자본이 마이너스', value: 'full' },
@@ -128,6 +131,8 @@ interface FiltersState {
   turnaround: { on: boolean; value: ProfitTurnaroundMode };
   netIncome: { on: boolean; period: GrowthPeriodType; consecutive: ConsecutiveCount };
   revenue: { on: boolean; period: GrowthPeriodType; consecutive: ConsecutiveCount };
+  revenueGrowthYoY: { on: boolean; value: number };
+  dilutedEpsGrowthYoY: { on: boolean; value: number };
   institutional: { on: boolean; days: number };
   foreign: { on: boolean; days: number };
   pension: { on: boolean; days: number };
@@ -153,6 +158,8 @@ const INITIAL_STATE: FiltersState = {
   turnaround: { on: false, value: 'yoy' },
   netIncome: { on: false, period: 'quarterly', consecutive: 2 },
   revenue: { on: false, period: 'quarterly', consecutive: 2 },
+  revenueGrowthYoY: { on: false, value: 10 },
+  dilutedEpsGrowthYoY: { on: false, value: 15 },
   institutional: { on: false, days: 5 },
   foreign: { on: false, days: 5 },
   pension: { on: false, days: 5 },
@@ -177,6 +184,8 @@ type RowKey =
   | 'turnaround'
   | 'netIncome'
   | 'revenue'
+  | 'revenueGrowthYoY'
+  | 'dilutedEpsGrowthYoY'
   | 'institutional'
   | 'foreign'
   | 'pension'
@@ -195,7 +204,7 @@ type RowKey =
 
 const GROUP_ROWS: Record<string, RowKey[]> = {
   valuation: ['dividend'],
-  fundamental: ['turnaround', 'netIncome', 'revenue'],
+  fundamental: ['turnaround', 'netIncome', 'revenue', 'revenueGrowthYoY', 'dilutedEpsGrowthYoY'],
   flow: ['institutional', 'foreign', 'pension'],
   short: ['shortLevel', 'shortTrend', 'shortInterest'],
   loss: ['netLoss', 'operatingLoss'],
@@ -215,6 +224,36 @@ export function ScreenerFilters() {
   const [state, setState] = useState<FiltersState>(INITIAL_STATE);
   const [infoPreset, setInfoPreset] = useState<InvestorPreset | null>(null);
 
+  const [savedFilters, setSavedFilters] = useState<SavedFilter<FiltersState>[]>([]);
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [loadModalOpen, setLoadModalOpen] = useState(false);
+  const [saveName, setSaveName] = useState('');
+
+  useEffect(() => {
+    listSavedFilters<FiltersState>().then(setSavedFilters);
+  }, []);
+
+  const resetFilters = () => setState(INITIAL_STATE);
+
+  const confirmSaveFilter = () => {
+    const name = saveName.trim();
+    if (!name) return;
+    saveFilter(name, state).then((next) => {
+      setSavedFilters(next);
+      setSaveName('');
+      setSaveModalOpen(false);
+    });
+  };
+
+  const loadSavedFilter = (entry: SavedFilter<FiltersState>) => {
+    setState(entry.state);
+    setLoadModalOpen(false);
+  };
+
+  const removeSavedFilter = (id: string) => {
+    deleteSavedFilter<FiltersState>(id).then(setSavedFilters);
+  };
+
   useEffect(() => {
     const next: ScreenerFilter = {
       markets: state.markets.length > 0 ? state.markets : undefined,
@@ -226,6 +265,8 @@ export function ScreenerFilters() {
       revenueStreak: state.revenue.on
         ? { period: state.revenue.period, consecutive: state.revenue.consecutive }
         : undefined,
+      minRevenueGrowthYoY: state.revenueGrowthYoY.on ? state.revenueGrowthYoY.value : undefined,
+      minDilutedEpsGrowthYoY: state.dilutedEpsGrowthYoY.on ? state.dilutedEpsGrowthYoY.value : undefined,
       institutionalNetBuyDays: state.institutional.on ? state.institutional.days : undefined,
       foreignNetBuyDays: state.foreign.on ? state.foreign.days : undefined,
       pensionNetBuyDays: state.pension.on ? state.pension.days : undefined,
@@ -298,6 +339,18 @@ export function ScreenerFilters() {
 
   return (
     <View style={styles.container}>
+      <View style={styles.toolbar}>
+        <Pressable style={styles.toolbarButton} onPress={resetFilters} hitSlop={8}>
+          <Text style={styles.toolbarButtonText}>초기화</Text>
+        </Pressable>
+        <Pressable style={styles.toolbarButton} onPress={() => setSaveModalOpen(true)} hitSlop={8}>
+          <Text style={styles.toolbarButtonText}>필터 저장</Text>
+        </Pressable>
+        <Pressable style={styles.toolbarButton} onPress={() => setLoadModalOpen(true)} hitSlop={8}>
+          <Text style={styles.toolbarButtonText}>필터 불러오기</Text>
+        </Pressable>
+      </View>
+
       <FilterGroup title="시장" defaultExpanded>
         <View style={styles.chipRow}>
           {ALL_MARKETS.map((market) => {
@@ -538,6 +591,36 @@ export function ScreenerFilters() {
             onChange={(consecutive) => patch('revenue', { consecutive, on: true })}
           />
         </FilterRow>
+        <FilterRow
+          label="매출 성장률"
+          note="이번 분기 매출이 작년 같은 분기보다 그만큼 이상 늘었을 때"
+          checked={state.revenueGrowthYoY.on}
+          onCheckedChange={(on) => setRow('revenueGrowthYoY', on)}
+        >
+          <Select
+            compact
+            label="매출 성장률 (전년동기 대비)"
+            options={YOY_GROWTH_OPTIONS}
+            value={state.revenueGrowthYoY.value}
+            onChange={(value) => patch('revenueGrowthYoY', { value, on: true })}
+          />
+          <Text style={styles.rowText}>이상 (전년동기 대비)</Text>
+        </FilterRow>
+        <FilterRow
+          label="한 주당 버는 돈이 늘어나는 속도"
+          note="희석주당이익(EPS) 기준 - 자사주 매입·전환사채 등 주식 수 변화까지 반영돼 순이익 성장률과 다를 수 있음"
+          checked={state.dilutedEpsGrowthYoY.on}
+          onCheckedChange={(on) => setRow('dilutedEpsGrowthYoY', on)}
+        >
+          <Select
+            compact
+            label="EPS 희석 성장률 (전년동기 대비)"
+            options={YOY_GROWTH_OPTIONS}
+            value={state.dilutedEpsGrowthYoY.value}
+            onChange={(value) => patch('dilutedEpsGrowthYoY', { value, on: true })}
+          />
+          <Text style={styles.rowText}>이상 (전년동기 대비)</Text>
+        </FilterRow>
       </FilterGroup>
 
       <FilterGroup
@@ -704,6 +787,79 @@ export function ScreenerFilters() {
       </FilterGroup>
 
       <Modal
+        visible={saveModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSaveModalOpen(false)}
+      >
+        <Pressable style={styles.overlay} onPress={() => setSaveModalOpen(false)}>
+          <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
+            <Text style={styles.sheetTitle}>필터 저장</Text>
+            <Text style={styles.sheetBody}>지금 설정된 필터 조합에 이름을 붙여서 저장해요.</Text>
+            <TextInput
+              value={saveName}
+              onChangeText={setSaveName}
+              placeholder="예: 저평가 성장주"
+              placeholderTextColor={colors.textMuted}
+              style={styles.textInput}
+              autoFocus
+              onSubmitEditing={confirmSaveFilter}
+              returnKeyType="done"
+            />
+            <View style={styles.sheetActions}>
+              <Pressable
+                style={styles.sheetSecondaryButton}
+                onPress={() => {
+                  setSaveName('');
+                  setSaveModalOpen(false);
+                }}
+              >
+                <Text style={styles.sheetSecondaryButtonText}>취소</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.sheetPrimaryButton, !saveName.trim() && styles.sheetPrimaryButtonDisabled]}
+                onPress={confirmSaveFilter}
+                disabled={!saveName.trim()}
+              >
+                <Text style={styles.sheetPrimaryButtonText}>저장</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={loadModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLoadModalOpen(false)}
+      >
+        <Pressable style={styles.overlay} onPress={() => setLoadModalOpen(false)}>
+          <Pressable style={styles.sheet} onPress={(event) => event.stopPropagation()}>
+            <Text style={styles.sheetTitle}>필터 불러오기</Text>
+            {savedFilters.length === 0 ? (
+              <Text style={styles.sheetBody}>저장된 필터가 없어요.</Text>
+            ) : (
+              savedFilters.map((entry) => (
+                <View key={entry.id} style={styles.savedRow}>
+                  <Pressable style={styles.savedRowMain} onPress={() => loadSavedFilter(entry)}>
+                    <Text style={styles.savedRowName}>{entry.name}</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.savedRowDelete}
+                    onPress={() => removeSavedFilter(entry.id)}
+                    hitSlop={10}
+                  >
+                    <Text style={styles.savedRowDeleteText}>삭제</Text>
+                  </Pressable>
+                </View>
+              ))
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
         visible={infoPreset != null}
         transparent
         animationType="fade"
@@ -748,6 +904,24 @@ const createStyles = (colors: Palette) =>
   StyleSheet.create({
   container: {
     paddingTop: spacing.md,
+  },
+  toolbar: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingBottom: spacing.sm,
+  },
+  toolbarButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+  },
+  toolbarButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.text,
   },
   chipRow: {
     flexDirection: 'row',
@@ -828,6 +1002,70 @@ const createStyles = (colors: Palette) =>
     lineHeight: 21,
     color: colors.text,
     marginTop: spacing.md,
+  },
+  textInput: {
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: colors.text,
+  },
+  sheetActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  sheetSecondaryButton: {
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+  },
+  sheetSecondaryButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textMuted,
+  },
+  sheetPrimaryButton: {
+    paddingVertical: 10,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.md,
+    backgroundColor: colors.accent,
+  },
+  sheetPrimaryButtonDisabled: {
+    opacity: 0.4,
+  },
+  sheetPrimaryButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  savedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  savedRowMain: {
+    flex: 1,
+  },
+  savedRowName: {
+    fontSize: 15,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  savedRowDelete: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+  },
+  savedRowDeleteText: {
+    fontSize: 13,
+    color: colors.textMuted,
   },
   sheetSection: {
     fontSize: 13,

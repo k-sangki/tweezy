@@ -27,6 +27,14 @@ export interface Stock {
   annualRevenue?: (number | null)[];
   annualOperatingProfit?: (number | null)[];
   /**
+   * 희석주당이익 (diluted EPS), KRW. Full-taxonomy only, so present for the
+   * precise tier alone. Distinct from 순이익 성장 - buybacks and issuance move
+   * share count, so EPS growth and net-income growth diverge whenever that
+   * happens, which is the whole reason this is tracked separately.
+   */
+  quarterlyDilutedEps?: (number | null)[];
+  annualDilutedEps?: (number | null)[];
+  /**
    * Fiscal-year-end balance sheet snapshots, newest first. No quarterly
    * equivalent exists - a balance sheet is a point in time, not a period.
    * `annualCash` comes only from the full-taxonomy fetch, so it is present
@@ -178,6 +186,10 @@ export interface ScreenerFilter {
   profitTurnaround?: ProfitTurnaroundMode;
   netIncomeStreak?: GrowthStreakFilter;
   revenueStreak?: GrowthStreakFilter;
+  /** Minimum YoY growth (%) for the most recent standalone quarter vs the same quarter a year earlier. */
+  minRevenueGrowthYoY?: number;
+  /** Same shape as minRevenueGrowthYoY, but on 희석주당이익 - diverges from 순이익 growth when share count moves. */
+  minDilutedEpsGrowthYoY?: number;
   /** Net buying every day for the last N consecutive trading days (1-10). Presence of a value = filter active. */
   institutionalNetBuyDays?: number;
   foreignNetBuyDays?: number;

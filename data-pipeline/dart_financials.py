@@ -92,7 +92,7 @@ COLLECT_BUDGET_SECONDS = 1800.0
 
 # Income-statement kinds carry a standalone quarterly series and an annual one;
 # balance-sheet kinds are point-in-time, so only the annual snapshots are kept.
-INCOME_KINDS = ("revenue", "profit", "operating_profit", "interest_expense")
+INCOME_KINDS = ("revenue", "profit", "operating_profit", "interest_expense", "diluted_eps")
 BALANCE_KINDS = (
     "total_liabilities",
     "total_equity",
@@ -138,6 +138,15 @@ ACCOUNT_DEFINITIONS: dict[str, tuple[tuple[str, ...], tuple[str, ...], set[str]]
         ("이자비용", "금융원가"),
         {"IS", "CIS"},
     ),
+    # Only the full-taxonomy API carries EPS; 주요계정 doesn't report it at all.
+    # 희석(diluted), not 기본(basic): counts the dilutive effect of convertibles/
+    # options/RSUs, so it moves with buybacks and issuance the way 순이익 alone
+    # doesn't - that's the whole reason this is a separate filter from 순이익 성장.
+    "diluted_eps": (
+        ("DilutedEarningsLossPerShare", "DilutedEarningsPerShare"),
+        ("희석주당순이익", "희석주당이익", "희석주당손익", "기본및희석주당이익"),
+        {"IS", "CIS"},
+    ),
     "total_liabilities": (("Liabilities",), ("부채총계",), {"BS"}),
     "total_equity": (("Equity",), ("자본총계",), {"BS"}),
     "current_assets": (("CurrentAssets",), ("유동자산",), {"BS"}),
@@ -170,6 +179,7 @@ MULTI_ACCOUNT_NAMES: dict[str, tuple[str, ...]] = {
     # Absent from 주요계정 - only the priority tier's full-taxonomy fetch has them.
     "cash": (),
     "interest_expense": (),
+    "diluted_eps": (),
 }
 
 # Balance-sheet rows live under sj_div "BS"; the income statement is IS/CIS.
@@ -435,6 +445,7 @@ def derive_series(corp_reports: CorpReports, now: datetime) -> dict[str, list[fl
         ("profit", "quarterlyNetIncome", "annualNetIncome"),
         ("revenue", "quarterlyRevenue", "annualRevenue"),
         ("operating_profit", "quarterlyOperatingProfit", "annualOperatingProfit"),
+        ("diluted_eps", "quarterlyDilutedEps", "annualDilutedEps"),
     ):
         series[quarterly_key] = [_apply(corp_reports, recipes[period], kind) for period in quarters]
         series[annual_key] = annual_years(kind)

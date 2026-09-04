@@ -58,6 +58,20 @@ export function isProfitTurnaround(
   return compare != null && compare <= 0;
 }
 
+/**
+ * YoY growth (%) of the most recent standalone quarter vs the same quarter a
+ * year earlier. A non-positive base makes a percentage meaningless (and would
+ * flip the sign for a loss-to-profit swing), so that reads as unknown, same
+ * as everywhere else in this codebase that computes a YoY percent.
+ */
+export function quarterlyYoyGrowthPct(series: (number | null)[] | undefined): number | null {
+  if (!series) return null;
+  const latest = series[0];
+  const prior = series[YOY_QUARTER_OFFSET];
+  if (latest == null || prior == null || prior <= 0) return null;
+  return (latest / prior - 1) * 100;
+}
+
 function seriesFor(stock: Stock, streak: GrowthStreakFilter, kind: 'netIncome' | 'revenue'): (number | null)[] | undefined {
   const quarterly = kind === 'netIncome' ? stock.quarterlyNetIncome : stock.quarterlyRevenue;
   const annual = kind === 'netIncome' ? stock.annualNetIncome : stock.annualRevenue;
@@ -210,6 +224,14 @@ export function applyFilters(stocks: Stock[], filter: ScreenerFilter): Stock[] {
     }
     if (filter.revenueStreak && !hasIncreasingStreak(seriesFor(stock, filter.revenueStreak, 'revenue'), filter.revenueStreak.consecutive)) {
       return false;
+    }
+    if (filter.minRevenueGrowthYoY != null) {
+      const growth = quarterlyYoyGrowthPct(stock.quarterlyRevenue);
+      if (growth == null || growth < filter.minRevenueGrowthYoY) return false;
+    }
+    if (filter.minDilutedEpsGrowthYoY != null) {
+      const growth = quarterlyYoyGrowthPct(stock.quarterlyDilutedEps);
+      if (growth == null || growth < filter.minDilutedEpsGrowthYoY) return false;
     }
     if (filter.institutionalNetBuyDays != null && !hasConsecutiveNetBuy(stock.institutionalNetBuy, filter.institutionalNetBuyDays)) {
       return false;
